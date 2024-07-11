@@ -1,0 +1,6 @@
+/output
+
+*.syso
+
+*.manifest
+*.exe
