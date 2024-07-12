@@ -43,9 +43,9 @@ func main() {
 						Text: "目录 / 文件: ",
 					},
 					LineEdit{
-						OnMouseDown: func(x, y int, button walk.MouseButton) {
-							mw.file_or_directory.SetText("")
-						},
+						//OnMouseDown: func(x, y int, button walk.MouseButton) {
+						//	mw.file_or_directory.SetText("")
+						//},
 						Text:     "Drop or Paste files here",
 						AssignTo: &mw.file_or_directory,
 					},
@@ -232,16 +232,17 @@ type MyMainWindow struct {
 }
 
 func (this *MyMainWindow) search() {
-	var ret []string = _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
-	var result string
-	for _, v := range ret {
-		//bug:多个结果换行显示
-		result = result + v + "\r\n"
-
+	ret, err := _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
+	if err != nil {
+		log.Printf("final Error :%v\n", err)
+	} else {
+		var result string
+		for _, v := range ret {
+			result = result + v + "\r\n"
+		}
+		this.result.SetText(result)
+		this.numLabel.SetText(strconv.Itoa(len(result)))
 	}
-	this.result.SetText(result)
-	this.numLabel.SetText(strconv.Itoa(len(result)))
-	log.Println(result)
 }
 
 func (this *MyMainWindow) SetType(mode string) {

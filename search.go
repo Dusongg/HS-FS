@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func _search(file_or_directory string, target string, mode string) []string {
+func _search(file_or_directory string, target string, mode string) ([]string, error) {
 	path, err := os.Stat(file_or_directory)
 	if err != nil {
 		log.Println(err)
@@ -22,7 +22,7 @@ func _search(file_or_directory string, target string, mode string) []string {
 	}
 }
 
-func directory_dfs(directory string, target string, mode string) []string {
+func directory_dfs(directory string, target string, mode string) ([]string, error) {
 	var results []string
 	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -39,18 +39,19 @@ func directory_dfs(directory string, target string, mode string) []string {
 			//for _, result := range file_dfs(intput_filename, target, mode) {
 			//	results = append(results, strings.TrimSuffix(path, filepath.Base(path)) + ": " + result)
 			//}
-
-			results = append(results, file_dfs(intput_filename, target, mode)...)
+			rets, err := file_dfs(intput_filename, target, mode)
+			if err != nil {
+				return fmt.Errorf("s -> %v", path, err)
+			} else {
+				results = append(results, rets...)
+			}
 		}
 		return nil
 	})
-	if err != nil {
-		log.Printf("Error: %v\n", err)
-	}
-	return results
+	return results, err
 }
 
-func file_dfs(_filepath string, target string, mode string) []string {
+func file_dfs(_filepath string, target string, mode string) ([]string, error) {
 	var results []string
 	var matches []string //该文件调用的原子或业务逻辑
 
@@ -68,8 +69,8 @@ func file_dfs(_filepath string, target string, mode string) []string {
 
 	file, err := os.Open(_filepath)
 	if err != nil {
-		log.Printf("Error opening file : %v\n", err)
-		return results
+		log.Printf("Error opening file : %v\n", err) //bug
+		return results, err
 	}
 	defer file.Close()
 
@@ -102,20 +103,26 @@ func file_dfs(_filepath string, target string, mode string) []string {
 	}
 
 	//log.Println("total : " + strconv.Itoa(len(ans_lines))) //debug
+	func_name := strings.TrimSuffix(filepath.Base(_filepath), ".code.txt") //[AF_xxx|AS_xx|LF_xx....]
 	if is_found {
-		var this_file_result = strings.TrimSuffix(filepath.Base(_filepath), ".code.txt") + " in line" //带路径
+		var cur_file_result = func_name + " in line" //带路径
 		for _, line := range ans_lines {
-			this_file_result += fmt.Sprintf("<%d>", line)
+			cur_file_result += fmt.Sprintf("<%d>", line)
 		}
-		results = append(results, this_file_result)
+		results = append(results, cur_file_result)
 	}
 
 	//dfs
 	for _, match := range matches {
-		next_file := outputDir + "/" + match + ".code.txt"
-		ret_results := file_dfs(next_file, target, mode)
-		for _, ret_result := range ret_results {
-			results = append(results, strings.TrimSuffix(filepath.Base(_filepath), ".code.txt")+" -> "+ret_result)
+		next_file := outputDir + "/" + match + ".code.txt" //bug:  正则匹配错误!!!!!!!!!!
+		rets, ret_err := file_dfs(next_file, target, mode)
+		if ret_err != nil {
+			err_with_path := fmt.Errorf("%s -> %v", func_name, ret_err)
+			return results, err_with_path
+		} else {
+			for _, ret_result := range rets {
+				results = append(results, strings.TrimSuffix(filepath.Base(_filepath), ".code.txt")+" -> "+ret_result)
+			}
 		}
 	}
 
@@ -123,13 +130,5 @@ func file_dfs(_filepath string, target string, mode string) []string {
 		log.Println("Error reading file:", err)
 	}
 
-	return results
-}
-
-func test() {
-	//test
-	for _, res := range directory_dfs(`D:\1_hundsun代码\DevCodes\经纪业务运营平台V21\业务逻辑\存管\UFT接口管理`, "hs_strcpy", EXACT_MATCH) {
-		log.Println(res)
-	}
-
+	return results, nil
 }
