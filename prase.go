@@ -65,13 +65,12 @@ func prase(path string) {
 				}
 				num++
 				if num%5000 == 0 {
-					fmt.Println("prase file cnt : " + strconv.Itoa(num))
+					fmt.Println("Number of files currently parsed: " + strconv.Itoa(num))
 				}
 			}
-			fmt.Println("directory:  " + dir + "   total: " + strconv.Itoa(num))
 			return nil
 		})
-
+		fmt.Println("directory:  " + dir + "   total: " + strconv.Itoa(num))
 		if err != nil {
 			fmt.Printf("end Error: %v\n", err)
 		}

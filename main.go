@@ -4,12 +4,17 @@ import (
 	"fmt"
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
-	"strconv"
 )
 
-func main() {
+const (
+	NONE_MATCH  = "NONE_MATCH"
+	EXACT_MATCH = "EXACT_MATCH"
+	REGEX_MATCH = "REGEX_MATCH"
+)
+
+func test() {
 	mw := &MyMainWindow{}
-	subwd := MySubWindow{}
+	subwd := &MySubWindow{}
 
 	if err := (MainWindow{
 		Title: "hs_file_searcher",
@@ -45,15 +50,13 @@ func main() {
 						Buttons: []RadioButton{
 							RadioButton{
 								Name:     "all",
-								Text:     "直接匹配",
-								Value:    "1",
-								AssignTo: &mw.type_direct_match,
+								Text:     "精确匹配",
+								AssignTo: &mw.type_exact_match,
 							},
 							RadioButton{
 								Name:     "all",
 								Text:     "正则匹配",
-								Value:    "2",
-								AssignTo: &mw.type_Regular_match,
+								AssignTo: &mw.type_regular_match,
 							},
 						},
 					},
@@ -76,14 +79,14 @@ func main() {
 		return
 	}
 
-	mw.type_direct_match.Clicked().Attach(func() {
+	mw.type_exact_match.Clicked().Attach(func() {
 		go func() {
-			mw.SetType(mw.type_direct_match.Value())
+			mw.SetType(EXACT_MATCH)
 		}()
 	})
-	mw.type_Regular_match.Clicked().Attach(func() {
+	mw.type_regular_match.Clicked().Attach(func() {
 		go func() {
-			mw.SetType(mw.type_Regular_match.Value())
+			mw.SetType(REGEX_MATCH)
 		}()
 	})
 
@@ -108,13 +111,13 @@ func main() {
 							walk.MsgBox(subwd, "提示", "Error clearing output directory", walk.MsgBoxIconWarning)
 							subwd.Accept()
 						}
-						general_append(&subwd)
+						general_append(subwd)
 					},
 				},
 				PushButton{
 					Text: "Append",
 					OnClicked: func() {
-						general_append(&subwd)
+						general_append(subwd)
 					},
 				},
 				PushButton{
@@ -138,7 +141,7 @@ func main() {
 		case mw.target.Text() == "":
 			walk.MsgBox(mw, "提示", "请输入查找目标", walk.MsgBoxIconWarning)
 			return
-		case mw.match_mode == 0:
+		case mw.match_mode == NONE_MATCH:
 			walk.MsgBox(mw, "提示", "请选择匹配模式", walk.MsgBoxIconWarning)
 			return
 		}
@@ -166,8 +169,8 @@ type MySubWindow struct {
 type MyMainWindow struct {
 	*walk.MainWindow
 
-	type_direct_match  *walk.RadioButton
-	type_Regular_match *walk.RadioButton
+	type_exact_match   *walk.RadioButton
+	type_regular_match *walk.RadioButton
 	run                *walk.PushButton
 
 	file_or_directory *walk.LineEdit
@@ -177,21 +180,22 @@ type MyMainWindow struct {
 	out_num *walk.LineEdit
 	result  *walk.TextEdit
 
-	match_mode int
+	match_mode string
 	typeLabel  *walk.Label
 	numLabel   *walk.Label
 }
 
-func (this *MyMainWindow) SetType(type_id interface{}) {
-	this.match_mode, _ = strconv.Atoi(type_id.(string))
-}
 func (this *MyMainWindow) search() {
-	var ret []string = _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
-	var result string
-	for _, v := range ret {
-		//bug:多个结果换行显示
-		result += v + "\n"
-	}
-	this.result.SetText(result)
-	this.numLabel.SetText(strconv.Itoa(len(result)))
+	//var ret []string = _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
+	//var result string
+	//for _, v := range ret {
+	//	//bug:多个结果换行显示
+	//	result += v + "\n"
+	//}
+	//this.result.SetText(result)
+	//this.numLabel.SetText(strconv.Itoa(len(result)))
+}
+
+func (this *MyMainWindow) SetType(mode string) {
+	this.match_mode = mode
 }
