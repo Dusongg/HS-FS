@@ -1,9 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
+	"log"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -12,7 +14,13 @@ const (
 	REGEX_MATCH = "REGEX_MATCH"
 )
 
-func test() {
+func main() {
+	walk.AppendToWalkInit(func() {
+		walk.FocusEffect, _ = walk.NewBorderGlowEffect(walk.RGB(0, 63, 255))
+		walk.InteractionEffect, _ = walk.NewDropShadowEffect(walk.RGB(63, 63, 63))
+		walk.ValidationErrorEffect, _ = walk.NewBorderGlowEffect(walk.RGB(255, 0, 0))
+	})
+
 	mw := &MyMainWindow{}
 	subwd := &MySubWindow{}
 
@@ -24,56 +32,94 @@ func test() {
 		Layout: VBox{
 			MarginsZero: true,
 		},
+		OnDropFiles: func(files []string) {
+			mw.file_or_directory.SetText(strings.Join(files, "\r\n"))
+		},
 		Children: []Widget{
-			HSplitter{
-				MaxSize: Size{0, 50},
-
+			Composite{
+				Layout: Grid{Columns: 3},
 				Children: []Widget{
-					Label{Text: "目录 / 文件: "},
-					LineEdit{
-						AssignTo: &mw.file_or_directory,
-						MaxSize:  Size{Height: 10, Width: 1},
+					Label{
+						Text: "目录 / 文件: ",
 					},
-					PushButton{AssignTo: &mw.load, Text: "解析原子文件与逻辑服务文件内容"},
+					LineEdit{
+						OnMouseDown: func(x, y int, button walk.MouseButton) {
+							mw.file_or_directory.SetText("")
+						},
+						Text:     "Drop or Paste files here",
+						AssignTo: &mw.file_or_directory,
+					},
+					PushButton{
+						Text: "Browser",
+						OnClicked: func() {
+							browser(mw)
+						},
+					},
 				},
 			},
-			HSplitter{
-				MaxSize: Size{0, 50},
+			Composite{
+				Layout: Grid{Columns: 10},
 				Children: []Widget{
-					Label{Text: "查找目标: "},
+					Label{
+						Text: "查找目标: ",
+					},
 					LineEdit{
 						AssignTo: &mw.target,
-						MaxSize:  Size{Height: 10, Width: 1},
 					},
-					Label{Text: "匹配模式: "},
+					Label{
+						Text: "匹配模式: ",
+					},
 					RadioButtonGroup{
 						Buttons: []RadioButton{
-							RadioButton{
-								Name:     "all",
+							{
+								Name:     "exact_match",
 								Text:     "精确匹配",
 								AssignTo: &mw.type_exact_match,
 							},
-							RadioButton{
-								Name:     "all",
+							{
+								Name:     "regular_match",
 								Text:     "正则匹配",
 								AssignTo: &mw.type_regular_match,
 							},
 						},
 					},
-					PushButton{AssignTo: &mw.run, Text: "运行"},
 				},
 			},
+			//下拉选项案例
+			//HSplitter{
+			//	Children: []Widget{
+			//		Label{
+			//			Text: "Preferred Food:",
+			//		},
+			//		ComboBox{
+			//			Editable: true,
+			//			Value:    Bind("PreferredFood"),
+			//			Model:    []string{"Fruit", "Grass", "Fish", "Meat"},
+			//		},
+			//	},
+			//},
 
-			VSplitter{
-				Children: []Widget{
-					TextEdit{
-						AssignTo: &mw.result,
-						ReadOnly: true,
-						HScroll:  true,
-						VScroll:  true},
-				},
+			TextEdit{
+
+				AssignTo: &mw.result,
+				ReadOnly: true,
+				HScroll:  true,
+				VScroll:  true,
 			},
 			Label{Text: "查询结果数量： ", AssignTo: &mw.numLabel},
+
+			Composite{
+				Layout: HBox{},
+				Children: []Widget{
+					HSpacer{},
+					PushButton{AssignTo: &mw.run, Text: "Run"},
+
+					PushButton{AssignTo: &mw.load, Text: "Prase"},
+					PushButton{Text: "Cancel", OnClicked: func() {
+						mw.Close()
+					}},
+				},
+			},
 		},
 	}.Create()); err != nil {
 		return
@@ -107,7 +153,7 @@ func test() {
 					OnClicked: func() {
 						err := clearOutputDir()
 						if err != nil {
-							fmt.Printf("Error clearing output directory %s: %v\n", outputDir, err)
+							log.Printf("Error clearing output directory %s: %v\n", outputDir, err)
 							walk.MsgBox(subwd, "提示", "Error clearing output directory", walk.MsgBoxIconWarning)
 							subwd.Accept()
 						}
@@ -186,14 +232,16 @@ type MyMainWindow struct {
 }
 
 func (this *MyMainWindow) search() {
-	//var ret []string = _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
-	//var result string
-	//for _, v := range ret {
-	//	//bug:多个结果换行显示
-	//	result += v + "\n"
-	//}
-	//this.result.SetText(result)
-	//this.numLabel.SetText(strconv.Itoa(len(result)))
+	var ret []string = _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
+	var result string
+	for _, v := range ret {
+		//bug:多个结果换行显示
+		result = result + v + "\r\n"
+
+	}
+	this.result.SetText(result)
+	this.numLabel.SetText(strconv.Itoa(len(result)))
+	log.Println(result)
 }
 
 func (this *MyMainWindow) SetType(mode string) {

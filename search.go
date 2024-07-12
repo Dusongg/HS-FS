@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,7 +13,7 @@ import (
 func _search(file_or_directory string, target string, mode string) []string {
 	path, err := os.Stat(file_or_directory)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 	if path.IsDir() {
 		return directory_dfs(file_or_directory, target, mode)
@@ -27,21 +28,24 @@ func directory_dfs(directory string, target string, mode string) []string {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
-			if strings.HasPrefix(info.Name(), ".") {
-				return filepath.SkipDir
-			} else {
-
-			}
+		//跳过svn目录
+		if info.IsDir() && strings.HasPrefix(info.Name(), ".") {
+			return filepath.SkipDir
 		}
 		if !info.IsDir() {
-			intput_filename := outputDir + strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)) + ".code.txt"
+			//输入类似："D:\1_hundsun代码\DevCodes\经纪业务运营平台V21\业务逻辑\存管\UFT接口管理\服务\LS_UFT接口管理_UFT系统委托同步结果查询.service_design"
+			//添加文件目录
+			intput_filename := outputDir + "/" + strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)) + ".code.txt"
+			//for _, result := range file_dfs(intput_filename, target, mode) {
+			//	results = append(results, strings.TrimSuffix(path, filepath.Base(path)) + ": " + result)
+			//}
+
 			results = append(results, file_dfs(intput_filename, target, mode)...)
 		}
 		return nil
 	})
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		log.Printf("Error: %v\n", err)
 	}
 	return results
 }
@@ -64,7 +68,7 @@ func file_dfs(_filepath string, target string, mode string) []string {
 
 	file, err := os.Open(_filepath)
 	if err != nil {
-		fmt.Printf("Error opening file : %v\n", err)
+		log.Printf("Error opening file : %v\n", err)
 		return results
 	}
 	defer file.Close()
@@ -79,7 +83,7 @@ func file_dfs(_filepath string, target string, mode string) []string {
 		if regex.MatchString(line) {
 			ans_lines = append(ans_lines, lineNumber)
 			//debug
-			//fmt.Printf("find target at %s : line<%d>\n", strings.TrimSuffix(filepath.Base(_filepath), filepath.Ext(_filepath)), lineNumber)
+			//log.Printf("find target at %s : line<%d>\n", strings.TrimSuffix(filepath.Base(_filepath), filepath.Ext(_filepath)), lineNumber)
 			is_found = true
 		}
 
@@ -92,14 +96,14 @@ func file_dfs(_filepath string, target string, mode string) []string {
 		//submatches := M_regex.FindAllString(line, -1)
 		//if submatches != nil {
 		//	matches = append(matches, submatches...)
-		//	fmt.Println(len(submatches))
+		//	log.Println(len(submatches))
 		//}
 		lineNumber++
 	}
 
-	//fmt.Println("total : " + strconv.Itoa(len(ans_lines))) //debug
+	//log.Println("total : " + strconv.Itoa(len(ans_lines))) //debug
 	if is_found {
-		var this_file_result = filepath.Base(_filepath) + " in line" //带路径
+		var this_file_result = strings.TrimSuffix(filepath.Base(_filepath), ".code.txt") + " in line" //带路径
 		for _, line := range ans_lines {
 			this_file_result += fmt.Sprintf("<%d>", line)
 		}
@@ -116,16 +120,16 @@ func file_dfs(_filepath string, target string, mode string) []string {
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Println("Error reading file:", err)
+		log.Println("Error reading file:", err)
 	}
 
 	return results
 }
 
-func main() {
+func test() {
 	//test
-	for _, res := range file_dfs(".\\output\\LF_代客理财存管周边_客户资金余额获取.code.txt", "hs_strcpy", EXACT_MATCH) {
-		fmt.Println(res)
+	for _, res := range directory_dfs(`D:\1_hundsun代码\DevCodes\经纪业务运营平台V21\业务逻辑\存管\UFT接口管理`, "hs_strcpy", EXACT_MATCH) {
+		log.Println(res)
 	}
 
 }

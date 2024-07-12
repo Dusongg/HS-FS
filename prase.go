@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/xml"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,7 +18,7 @@ func prase(path string) {
 	//bug处理：文件路径不合法情况
 	dirs := strings.Split(path, ",")
 	for _, dir := range dirs {
-		fmt.Println(dir)
+		log.Println(dir)
 	}
 	//dirs := []string{
 	//	"D:\\1_hundsun代码\\DevCodes\\经纪业务运营平台V21\\业务逻辑",
@@ -28,7 +29,7 @@ func prase(path string) {
 		num := 0
 
 		dir = addEscapeBackslash(dir)
-		fmt.Println("start prasing:   " + dir)
+		log.Println("start prasing:   " + dir)
 		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
@@ -65,14 +66,14 @@ func prase(path string) {
 				}
 				num++
 				if num%5000 == 0 {
-					fmt.Println("Number of files currently parsed: " + strconv.Itoa(num))
+					log.Println("Number of files currently parsed: " + strconv.Itoa(num))
 				}
 			}
 			return nil
 		})
-		fmt.Println("directory:  " + dir + "   total: " + strconv.Itoa(num))
+		log.Println("directory:  " + dir + "   total: " + strconv.Itoa(num))
 		if err != nil {
-			fmt.Printf("end Error: %v\n", err)
+			log.Printf("end Error: %v\n", err)
 		}
 	}
 }
