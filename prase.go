@@ -29,6 +29,9 @@ func prase(path string) {
 		num := 0
 
 		dir = addEscapeBackslash(dir)
+		//if d, _ := os.Stat(path); !d.IsDir() {
+		//	//报错
+		//}
 		log.Println("start prasing:   " + dir)
 		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -108,16 +111,26 @@ func clearOutputDir() error {
 	return nil
 }
 
-func filterCommentedCode(code string) string {
-	lines := strings.Split(code, "\n")
-	var uncommentedLines []string
-	commentRegex := regexp.MustCompile(`^\s*//`)
-	for _, line := range lines {
-		if !commentRegex.MatchString(line) {
-			uncommentedLines = append(uncommentedLines, line)
-		}
-	}
-	return strings.Join(uncommentedLines, "\n")
+func filterCommentedCode(content string) string {
+	//lines := strings.Split(code, "\n")
+	//var uncommentedLines []string
+	//commentRegex := regexp.MustCompile(`^\s*(//|--)`)
+	//for _, line := range lines {
+	//	if !commentRegex.MatchString(line) {
+	//		//去除行内注释
+	//		if idx := strings.IndexAny(line, "//"); idx != -1 {
+	//			line = line[:idx] // 删除注释及其后面的内容
+	//		} else if idx2 := strings.IndexAny(line, "--"); idx2 != -1 {
+	//			line = line[:idx2]
+	//		}
+	//		uncommentedLines = append(uncommentedLines, line)
+	//	}
+	//}
+	//return strings.Join(uncommentedLines, "\n")
+	re := regexp.MustCompile(`//.*|/\*(.|\n)*?\*/|--.*`)
+	content = re.ReplaceAllString(content, "")
+
+	return content
 }
 
 func addEscapeBackslash(path string) string {

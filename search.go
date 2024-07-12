@@ -41,7 +41,7 @@ func directory_dfs(directory string, target string, mode string) ([]string, erro
 			//}
 			rets, err := file_dfs(intput_filename, target, mode)
 			if err != nil {
-				return fmt.Errorf("s -> %v", path, err)
+				return fmt.Errorf("%s -> %v", path, err)
 			} else {
 				results = append(results, rets...)
 			}
@@ -65,7 +65,7 @@ func file_dfs(_filepath string, target string, mode string) ([]string, error) {
 		//regex = regexp.MustCompile("\\.\\d+")
 	}
 
-	M_regex := regexp.MustCompile(`(AS|AF|AP|LF|LS)_[^]]+`)
+	M_regex := regexp.MustCompile(`\[(AS|AF|AP|LF|LS)_[^]]+\]`)
 
 	file, err := os.Open(_filepath)
 	if err != nil {
@@ -77,7 +77,8 @@ func file_dfs(_filepath string, target string, mode string) ([]string, error) {
 	is_found := false
 	scanner := bufio.NewScanner(file)
 	lineNumber := 1
-	var ans_lines []int
+	var ans_lines []int //当前文件匹配到target所在行
+	var first_matches_lines []int
 	seen := make(map[string]bool) //去重
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -92,6 +93,7 @@ func file_dfs(_filepath string, target string, mode string) ([]string, error) {
 		submatch := M_regex.FindString(line)
 		if submatch != "" && !seen[submatch] {
 			seen[submatch] = true
+			first_matches_lines = append(first_matches_lines, lineNumber)
 			matches = append(matches, submatch)
 		}
 		//submatches := M_regex.FindAllString(line, -1)
@@ -113,11 +115,11 @@ func file_dfs(_filepath string, target string, mode string) ([]string, error) {
 	}
 
 	//dfs
-	for _, match := range matches {
-		next_file := outputDir + "/" + match + ".code.txt" //bug:  正则匹配错误!!!!!!!!!!
+	for id, match := range matches {
+		next_file := outputDir + "/" + match[1:len(match)-1] + ".code.txt" //bug:  正则匹配错误!!!!!!!!!!
 		rets, ret_err := file_dfs(next_file, target, mode)
 		if ret_err != nil {
-			err_with_path := fmt.Errorf("%s -> %v", func_name, ret_err)
+			err_with_path := fmt.Errorf("%s<%d> -> %v", func_name, first_matches_lines[id], ret_err) //那个文件在哪一行调用那个方法导致报错
 			return results, err_with_path
 		} else {
 			for _, ret_result := range rets {

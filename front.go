@@ -151,7 +151,10 @@ func main() {
 				PushButton{
 					Text: "Reload",
 					OnClicked: func() {
+						walk.MsgBox(subwd, "提示", "正在清除目录中的文件", walk.MsgBoxIconWarning)
+						
 						err := clearOutputDir()
+
 						if err != nil {
 							log.Printf("Error clearing output directory %s: %v\n", outputDir, err)
 							walk.MsgBox(subwd, "提示", "Error clearing output directory", walk.MsgBoxIconWarning)
