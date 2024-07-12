@@ -9,6 +9,8 @@ import (
 
 func main() {
 	mw := &MyMainWindow{}
+	subwd := MySubWindow{}
+
 	if err := (MainWindow{
 		Title: "hs_file_searcher",
 		// 指定窗口的大小
@@ -22,7 +24,7 @@ func main() {
 				MaxSize: Size{0, 50},
 
 				Children: []Widget{
-					Label{Text: "路径 / 文件: "},
+					Label{Text: "目录 / 文件: "},
 					LineEdit{
 						AssignTo: &mw.file_or_directory,
 						MaxSize:  Size{Height: 10, Width: 1},
@@ -38,7 +40,7 @@ func main() {
 						AssignTo: &mw.target,
 						MaxSize:  Size{Height: 10, Width: 1},
 					},
-					Label{Text: "      功能:   "},
+					Label{Text: "匹配模式: "},
 					RadioButtonGroup{
 						Buttons: []RadioButton{
 							RadioButton{
@@ -76,65 +78,68 @@ func main() {
 
 	mw.type_direct_match.Clicked().Attach(func() {
 		go func() {
-			mw.SetType(mw.type_direct_match.Value(), "直接匹配")
+			mw.SetType(mw.type_direct_match.Value())
 		}()
 	})
 	mw.type_Regular_match.Clicked().Attach(func() {
 		go func() {
-			mw.SetType(mw.type_Regular_match.Value(), "正则匹配")
+			mw.SetType(mw.type_Regular_match.Value())
 		}()
 	})
 
 	mw.load.Clicked().Attach(func() {
-		var subWindow *walk.Dialog
-		var prase_path *walk.LineEdit
-		Dialog{
-			AssignTo: &subWindow,
+		if err := (Dialog{
+			AssignTo: &subwd.Dialog,
 			Size:     Size{Width: 200, Height: 150},
 			Layout:   VBox{},
 
 			Children: []Widget{
-				Label{Text: "重新解析耗时较长，是否要继续"},
+				Label{Text: "输入待解析得目录或文件(以英文逗号分割)"},
+				LineEdit{
+					AssignTo: &subwd.prase_path,
+					MaxSize:  Size{Height: 20, Width: 1},
+				},
 				PushButton{
-					Text: "继续",
+					Text: "Reload",
 					OnClicked: func() {
-						var subWindow2 *walk.Dialog
-						Dialog{
-							AssignTo: &subWindow2,
-							Size:     Size{Width: 200, Height: 150},
-							Layout:   VBox{},
-
-							Children: []Widget{
-								Label{Text: "输入待解析得目录(多个目录用英文逗号分割)"},
-								LineEdit{
-									AssignTo: &prase_path,
-									MaxSize:  Size{Height: 20, Width: 1},
-								},
-								PushButton{
-									Text: "OK",
-									OnClicked: func() {
-										prase(prase_path.Text())
-										subWindow2.Accept()
-									},
-								},
-							},
-						}.Run(mw)
-						subWindow.Accept()
+						err := clearOutputDir()
+						if err != nil {
+							fmt.Printf("Error clearing output directory %s: %v\n", outputDir, err)
+							walk.MsgBox(subwd, "提示", "Error clearing output directory", walk.MsgBoxIconWarning)
+							subwd.Accept()
+						}
+						general_append(&subwd)
 					},
 				},
 				PushButton{
-					Text: "退出",
+					Text: "Append",
 					OnClicked: func() {
-						subWindow.Accept()
+						general_append(&subwd)
+					},
+				},
+				PushButton{
+					Text: "Cancel",
+					OnClicked: func() {
+						subwd.Accept()
 					},
 				},
 			},
-		}.Run(mw)
+		}.Create(mw)); err != nil {
+			return
+		}
+		subwd.Run()
 	})
 
 	mw.run.Clicked().Attach(func() {
-		if mw.match_mode == 0 {
-			walk.MsgBox(mw, "提示", "请选择搜索模式", walk.MsgBoxIconWarning)
+		switch {
+		case mw.file_or_directory.Text() == "":
+			walk.MsgBox(mw, "提示", "请输入目标所在文件或目录", walk.MsgBoxIconWarning)
+			return
+		case mw.target.Text() == "":
+			walk.MsgBox(mw, "提示", "请输入查找目标", walk.MsgBoxIconWarning)
+			return
+		case mw.match_mode == 0:
+			walk.MsgBox(mw, "提示", "请选择匹配模式", walk.MsgBoxIconWarning)
 			return
 		}
 		mw.search()
@@ -142,6 +147,20 @@ func main() {
 
 	mw.Run()
 
+}
+
+func general_append(subwd *MySubWindow) {
+	if subwd.prase_path.Text() == "" {
+		walk.MsgBox(subwd, "提示", "请输入目录或文件", walk.MsgBoxIconWarning)
+		return
+	}
+	prase(subwd.prase_path.Text())
+	subwd.Accept()
+}
+
+type MySubWindow struct {
+	*walk.Dialog
+	prase_path *walk.LineEdit
 }
 
 type MyMainWindow struct {
@@ -163,8 +182,7 @@ type MyMainWindow struct {
 	numLabel   *walk.Label
 }
 
-func (this *MyMainWindow) SetType(type_id interface{}, str string) {
-	fmt.Println(type_id)
+func (this *MyMainWindow) SetType(type_id interface{}) {
 	this.match_mode, _ = strconv.Atoi(type_id.(string))
 }
 func (this *MyMainWindow) search() {

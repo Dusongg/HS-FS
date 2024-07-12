@@ -10,8 +10,9 @@ import (
 	"strings"
 )
 
+var outputDir string = "./output"
+
 func prase(path string) {
-	outputDir := "./output"
 
 	//bug处理：文件路径不合法情况
 	dirs := strings.Split(path, ",")
@@ -22,11 +23,6 @@ func prase(path string) {
 	//	"D:\\1_hundsun代码\\DevCodes\\经纪业务运营平台V21\\业务逻辑",
 	//	"D:\\1_hundsun代码\\DevCodes\\经纪业务运营平台V21\\原子",
 	//}
-	err := clearOutputDir(outputDir)
-	if err != nil {
-		fmt.Printf("Error clearing output directory %s: %v\n", outputDir, err)
-		return
-	}
 
 	for _, dir := range dirs {
 		num := 0
@@ -87,25 +83,25 @@ type Hsdoc struct {
 	Code    string   `xml:"code"`
 }
 
-func clearOutputDir(dir string) error {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+func clearOutputDir() error {
+	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 		return nil
 	}
-	files, err := os.ReadDir(dir)
+	files, err := os.ReadDir(outputDir)
 	if err != nil {
 		return err
 	}
 	for _, file := range files {
-		err = os.RemoveAll(filepath.Join(dir, file.Name()))
+		err = os.RemoveAll(filepath.Join(outputDir, file.Name()))
 		if err != nil {
 			return err
 		}
 	}
-	err = os.RemoveAll(dir)
+	err = os.RemoveAll(outputDir)
 	if err != nil {
 		return err
 	}
-	err = os.Mkdir(dir, 0755)
+	err = os.Mkdir(outputDir, 0755)
 	if err != nil {
 		return err
 	}
