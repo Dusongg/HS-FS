@@ -43,9 +43,10 @@ func main() {
 						Text: "目录 / 文件: ",
 					},
 					LineEdit{
-						//OnMouseDown: func(x, y int, button walk.MouseButton) {
-						//	mw.file_or_directory.SetText("")
-						//},
+						//bug
+						OnMouseDown: func(x, y int, button walk.MouseButton) {
+							mw.file_or_directory.SetText("")
+						},
 						Text:     "Drop or Paste files here",
 						AssignTo: &mw.file_or_directory,
 					},
@@ -139,40 +140,63 @@ func main() {
 	mw.load.Clicked().Attach(func() {
 		if err := (Dialog{
 			AssignTo: &subwd.Dialog,
-			Size:     Size{Width: 200, Height: 150},
+			MinSize:  Size{Width: 500, Height: 200},
 			Layout:   VBox{},
 
 			Children: []Widget{
-				Label{Text: "输入待解析得目录或文件(以英文逗号分割)"},
-				LineEdit{
-					AssignTo: &subwd.prase_path,
-					MaxSize:  Size{Height: 20, Width: 1},
-				},
-				PushButton{
-					Text: "Reload",
-					OnClicked: func() {
-						walk.MsgBox(subwd, "提示", "正在清除目录中的文件", walk.MsgBoxIconWarning)
-						
-						err := clearOutputDir()
 
-						if err != nil {
-							log.Printf("Error clearing output directory %s: %v\n", outputDir, err)
-							walk.MsgBox(subwd, "提示", "Error clearing output directory", walk.MsgBoxIconWarning)
-							subwd.Accept()
-						}
-						general_append(subwd)
+				Composite{
+					Layout: Grid{Columns: 10},
+					Children: []Widget{
+						LineEdit{
+							Text:     "输入待解析得目录或文件(以英文逗号分割)",
+							AssignTo: &subwd.prase_path,
+							MaxSize:  Size{Width: 450, Height: 20},
+						},
+						PushButton{
+							//修改：只有第一次点击才清空
+							OnMouseDown: func(x, y int, button walk.MouseButton) {
+								subwd.prase_path.SetText("")
+							},
+							Text: "Browser",
+							OnClicked: func() {
+								browser(subwd)
+							},
+						},
 					},
 				},
-				PushButton{
-					Text: "Append",
-					OnClicked: func() {
-						general_append(subwd)
-					},
-				},
-				PushButton{
-					Text: "Cancel",
-					OnClicked: func() {
-						subwd.Accept()
+
+				Composite{
+					Layout: HBox{},
+					Children: []Widget{
+						PushButton{
+
+							Text: "Reload",
+							OnClicked: func() {
+								walk.MsgBox(subwd, "提示", "正在清除目录中的文件", walk.MsgBoxIconWarning)
+
+								//先清除解析目录再判断有没有输入文件路径
+								err := clearOutputDir()
+								if err != nil {
+									log.Printf("Error clearing output directory %s: %v\n", outputDir, err)
+									walk.MsgBox(subwd, "提示", "Error clearing output directory", walk.MsgBoxIconWarning)
+									subwd.Accept()
+								}
+								general_append(subwd)
+							},
+						},
+						PushButton{
+							Text: "Append",
+							OnClicked: func() {
+								general_append(subwd)
+							},
+						},
+						PushButton{
+							Text: "Cancel",
+							OnClicked: func() {
+								subwd.Accept()
+							},
+						},
 					},
 				},
 			},

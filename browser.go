@@ -217,11 +217,12 @@ func shouldExclude(name string) bool {
 	return false
 }
 
-func browser(mw *MyMainWindow) {
+func browser(wd interface{}) {
 	var mainWindow *walk.MainWindow
 	var splitter *walk.Splitter
 	var treeView *walk.TreeView
 	var tableView *walk.TableView
+	var text_path *walk.TextEdit
 
 	treeModel, err := NewDirectoryTreeModel()
 	if err != nil {
@@ -234,8 +235,24 @@ func browser(mw *MyMainWindow) {
 		Title:    "Walk File Browser Example",
 		MinSize:  Size{600, 400},
 		Size:     Size{1024, 640},
-		Layout:   HBox{MarginsZero: true},
+		Layout:   VBox{MarginsZero: true},
 		Children: []Widget{
+			Composite{
+				Layout: Grid{Columns: 2},
+				Children: []Widget{
+					TextEdit{
+						AssignTo: &text_path,
+						MinSize:  Size{Width: 900, Height: 2},
+						MaxSize:  Size{Width: 900, Height: 2},
+					},
+					PushButton{
+						Text: "OK",
+						OnClicked: func() {
+							mainWindow.Close()
+						},
+					},
+				},
+			},
 			HSplitter{
 				AssignTo: &splitter,
 				Children: []Widget{
@@ -278,8 +295,34 @@ func browser(mw *MyMainWindow) {
 							if index := tableView.CurrentIndex(); index > -1 {
 								name := tableModel.items[index].Name
 								dir := treeView.CurrentItem().(*Directory)
-								mw.file_or_directory.SetText(filepath.Join(dir.Path(), name))
-								mainWindow.Close()
+								path := filepath.Join(dir.Path(), name)
+
+								switch wd.(type) {
+								//查询:单个路径
+								case *MyMainWindow:
+									err := wd.(*MyMainWindow).file_or_directory.SetText(path)
+									text_path.SetText(path)
+									if err != nil {
+										walk.MsgBox(mainWindow, "提示", "路径输入错误", walk.MsgBoxIconWarning)
+									}
+								//解析：可能多条路径
+								case *MySubWindow:
+									input_path := wd.(*MySubWindow).prase_path
+									if input_path.Text() == "" {
+										err := input_path.SetText(path)
+										text_path.SetText(path)
+										if err != nil {
+											walk.MsgBox(mainWindow, "提示", "路径输入错误", walk.MsgBoxIconWarning)
+										}
+									} else {
+										err := input_path.SetText(input_path.Text() + "," + path)
+										text_path.SetText(text_path.Text() + "," + path)
+										if err != nil {
+											walk.MsgBox(mainWindow, "提示", "路径输入错误", walk.MsgBoxIconWarning)
+
+										}
+									}
+								}
 							}
 
 						},
