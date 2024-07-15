@@ -13,22 +13,17 @@ import (
 
 var outputDir string = "./output"
 
-func prase(path string) {
-
+func prase(path string, transfer *map[string]string) {
 	//bug处理：文件路径不合法情况
-	dirs := strings.Split(path, ",")
+	dirs := strings.Split(path, ",") //bug:路径名带有,
 	for _, dir := range dirs {
 		log.Println(dir)
 	}
-	//dirs := []string{
-	//	"D:\\1_hundsun代码\\DevCodes\\经纪业务运营平台V21\\业务逻辑",
-	//	"D:\\1_hundsun代码\\DevCodes\\经纪业务运营平台V21\\原子",
-	//}
 
 	for _, dir := range dirs {
 		num := 0
 
-		dir = addEscapeBackslash(dir)
+		dir = addEscapeBackslash(dir) //转义
 		//if d, _ := os.Stat(path); !d.IsDir() {
 		//	//报错
 		//}
@@ -52,7 +47,7 @@ func prase(path string) {
 					return fmt.Errorf("failed to unmarshal XML from file %s: %v", path, err)
 				}
 
-				codeContent := filterCommentedCode(hsdoc.Code)
+				codeContent := filterCommentedCode(hsdoc.Code) //去注释
 
 				if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 					err = os.Mkdir(outputDir, 0755)
@@ -60,8 +55,11 @@ func prase(path string) {
 						return fmt.Errorf("failed to create output directory: %v", err)
 					}
 				}
-				outputFileName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)) + ".code.txt"
+				base_without_ext := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+				outputFileName := base_without_ext + ".code.txt"
 				outputPath := filepath.Join(outputDir, outputFileName)
+
+				(*transfer)[fmt.Sprintf("[%s]", base_without_ext)] = path
 
 				err = os.WriteFile(outputPath, []byte(codeContent), 0644)
 				if err != nil {
@@ -78,6 +76,7 @@ func prase(path string) {
 		if err != nil {
 			log.Printf("end Error: %v\n", err)
 		}
+
 	}
 }
 

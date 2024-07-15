@@ -1,9 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
 	"log"
+	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -15,6 +18,9 @@ const (
 )
 
 func main() {
+	transfer := make(map[string]string)    //from parse.go
+	results_lm := NewResultsListModel(nil) //from search.go
+
 	walk.AppendToWalkInit(func() {
 		walk.FocusEffect, _ = walk.NewBorderGlowEffect(walk.RGB(0, 63, 255))
 		walk.InteractionEffect, _ = walk.NewDropShadowEffect(walk.RGB(63, 63, 63))
@@ -100,12 +106,25 @@ func main() {
 			//	},
 			//},
 
-			TextEdit{
-
-				AssignTo: &mw.result,
-				ReadOnly: true,
-				HScroll:  true,
-				VScroll:  true,
+			ListBox{
+				AssignTo: &mw.res_list,
+				Model:    results_lm,
+				OnItemActivated: func() {
+					index := mw.res_list.CurrentIndex()
+					target_file := extractLastBracketContent(results_lm.results[index])
+					log.Println(target_file)
+					if source_file, exists := transfer[target_file]; exists {
+						cmd := exec.Command("cmd", "/c", "start", "", source_file)
+						if err := cmd.Run(); err != nil {
+							walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
+						}
+					} else {
+						walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", results_lm.results[index]), walk.MsgBoxIconError)
+					}
+				},
+				OnMouseMove: func(x, y int, button walk.MouseButton) {
+					//log.Printf("move to (%d, %d)", x, y)
+				},
 			},
 			Label{Text: "查询结果数量： ", AssignTo: &mw.numLabel},
 
@@ -182,13 +201,13 @@ func main() {
 									walk.MsgBox(subwd, "提示", "Error clearing output directory", walk.MsgBoxIconWarning)
 									subwd.Accept()
 								}
-								general_append(subwd)
+								general_append(subwd, &transfer)
 							},
 						},
 						PushButton{
 							Text: "Append",
 							OnClicked: func() {
-								general_append(subwd)
+								general_append(subwd, &transfer)
 							},
 						},
 						PushButton{
@@ -218,19 +237,19 @@ func main() {
 			walk.MsgBox(mw, "提示", "请选择匹配模式", walk.MsgBoxIconWarning)
 			return
 		}
-		mw.search()
+		results_lm.UpdateItems(mw.search())
 	})
 
 	mw.Run()
 
 }
 
-func general_append(subwd *MySubWindow) {
+func general_append(subwd *MySubWindow, transfer *map[string]string) {
 	if subwd.prase_path.Text() == "" {
 		walk.MsgBox(subwd, "提示", "请输入目录或文件", walk.MsgBoxIconWarning)
 		return
 	}
-	prase(subwd.prase_path.Text())
+	prase(subwd.prase_path.Text(), transfer)
 	subwd.Accept()
 }
 
@@ -250,28 +269,56 @@ type MyMainWindow struct {
 	load              *walk.PushButton
 	target            *walk.LineEdit
 
-	out_num *walk.LineEdit
-	result  *walk.TextEdit
+	out_num  *walk.LineEdit
+	res_list *walk.ListBox
 
 	match_mode string
 	typeLabel  *walk.Label
 	numLabel   *walk.Label
 }
 
-func (this *MyMainWindow) search() {
+func (this *MyMainWindow) search() []string {
 	ret, err := _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
 	if err != nil {
 		log.Printf("final Error :%v\n", err)
+		return nil
 	} else {
-		var result string
-		for _, v := range ret {
-			result = result + v + "\r\n"
-		}
-		this.result.SetText(result)
-		this.numLabel.SetText(strconv.Itoa(len(result)))
+		this.numLabel.SetText(strconv.Itoa(len(ret)))
+		return ret
 	}
+}
+
+type ResultsListModel struct {
+	walk.ListModelBase
+	results []string
+}
+
+func NewResultsListModel(items []string) *ResultsListModel {
+	return &ResultsListModel{results: items}
+}
+
+func (m *ResultsListModel) ItemCount() int {
+	return len(m.results)
+}
+
+func (m *ResultsListModel) Value(index int) interface{} {
+	return m.results[index]
+}
+
+func (m *ResultsListModel) UpdateItems(items []string) {
+	m.results = items
+	m.PublishItemsReset()
 }
 
 func (this *MyMainWindow) SetType(mode string) {
 	this.match_mode = mode
+}
+
+func extractLastBracketContent(line string) string {
+	re := regexp.MustCompile(`\[[^\]]*\]`)
+	matches := re.FindAllString(line, -1)
+	if len(matches) == 0 {
+		log.Println("no brackets found")
+	}
+	return matches[len(matches)-1]
 }

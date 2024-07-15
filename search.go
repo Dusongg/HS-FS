@@ -105,7 +105,7 @@ func file_dfs(_filepath string, target string, mode string) ([]string, error) {
 	}
 
 	//log.Println("total : " + strconv.Itoa(len(ans_lines))) //debug
-	func_name := strings.TrimSuffix(filepath.Base(_filepath), ".code.txt") //[AF_xxx|AS_xx|LF_xx....]
+	func_name := fmt.Sprintf("[%s]", strings.TrimSuffix(filepath.Base(_filepath), ".code.txt")) //[AF_xxx|AS_xx|LF_xx....]
 	if is_found {
 		var cur_file_result = func_name + " in line" //带路径
 		for _, line := range ans_lines {
@@ -116,14 +116,14 @@ func file_dfs(_filepath string, target string, mode string) ([]string, error) {
 
 	//dfs
 	for id, match := range matches {
-		next_file := outputDir + "/" + match[1:len(match)-1] + ".code.txt" //bug:  正则匹配错误!!!!!!!!!!
+		next_file := outputDir + "/" + match[1:len(match)-1] + ".code.txt"
 		rets, ret_err := file_dfs(next_file, target, mode)
 		if ret_err != nil {
 			err_with_path := fmt.Errorf("%s<%d> -> %v", func_name, first_matches_lines[id], ret_err) //那个文件在哪一行调用那个方法导致报错
 			return results, err_with_path
 		} else {
 			for _, ret_result := range rets {
-				results = append(results, strings.TrimSuffix(filepath.Base(_filepath), ".code.txt")+" -> "+ret_result)
+				results = append(results, func_name+" -> "+ret_result)
 			}
 		}
 	}

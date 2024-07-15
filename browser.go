@@ -319,7 +319,6 @@ func browser(wd interface{}) {
 										text_path.SetText(text_path.Text() + "," + path)
 										if err != nil {
 											walk.MsgBox(mainWindow, "提示", "路径输入错误", walk.MsgBoxIconWarning)
-
 										}
 									}
 								}
