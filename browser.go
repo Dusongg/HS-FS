@@ -271,8 +271,10 @@ func browser(wd interface{}) {
 						},
 					},
 					TableView{
-						AssignTo:      &tableView,
-						StretchFactor: 2,
+						AssignTo:         &tableView,
+						StretchFactor:    2,
+						AlternatingRowBG: true,
+						ColumnsOrderable: true,
 						Columns: []TableViewColumn{
 							TableViewColumn{
 								DataMember: "Name",

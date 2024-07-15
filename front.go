@@ -18,8 +18,13 @@ const (
 )
 
 func main() {
-	transfer := make(map[string]string)    //from parse.go
-	results_lm := NewResultsListModel(nil) //from search.go
+	transfer, err := loadTransferFromFile() //from parse.go  ,最开始无法加载
+	log.Printf("transfer size :%d", len(transfer))
+	if err != nil {
+		log.Println(err)
+	}
+	results_list := NewResultsListModel(nil) //from search.go
+	//tablemodel := NewResultInfoModel()
 
 	walk.AppendToWalkInit(func() {
 		walk.FocusEffect, _ = walk.NewBorderGlowEffect(walk.RGB(0, 63, 255))
@@ -108,22 +113,29 @@ func main() {
 
 			ListBox{
 				AssignTo: &mw.res_list,
-				Model:    results_lm,
+				Model:    results_list,
+				//AlternatingRowBG: true,
+				//ColumnsOrderable: true,
 				OnItemActivated: func() {
 					index := mw.res_list.CurrentIndex()
-					target_file := extractLastBracketContent(results_lm.results[index])
-					log.Println(target_file)
+					target_file := extractLastBracketContent(results_list.results[index]) //拿掉调用链的最后一个函数
+					log.Printf("open : %s", target_file)
+
 					if source_file, exists := transfer[target_file]; exists {
 						cmd := exec.Command("cmd", "/c", "start", "", source_file)
 						if err := cmd.Run(); err != nil {
 							walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
 						}
 					} else {
-						walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", results_lm.results[index]), walk.MsgBoxIconError)
+						walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", results_list.results[index]), walk.MsgBoxIconError)
 					}
 				},
+
+				OnMouseDown: func(x, y int, button walk.MouseButton) {
+				},
 				OnMouseMove: func(x, y int, button walk.MouseButton) {
-					//log.Printf("move to (%d, %d)", x, y)
+					//index := mw.res_list.CurrentIndex()
+
 				},
 			},
 			Label{Text: "查询结果数量： ", AssignTo: &mw.numLabel},
@@ -189,25 +201,15 @@ func main() {
 					Layout: HBox{},
 					Children: []Widget{
 						PushButton{
-
 							Text: "Reload",
 							OnClicked: func() {
-								walk.MsgBox(subwd, "提示", "正在清除目录中的文件", walk.MsgBoxIconWarning)
-
-								//先清除解析目录再判断有没有输入文件路径
-								err := clearOutputDir()
-								if err != nil {
-									log.Printf("Error clearing output directory %s: %v\n", outputDir, err)
-									walk.MsgBox(subwd, "提示", "Error clearing output directory", walk.MsgBoxIconWarning)
-									subwd.Accept()
-								}
-								general_append(subwd, &transfer)
+								parse(subwd, transfer, true)
 							},
 						},
 						PushButton{
 							Text: "Append",
 							OnClicked: func() {
-								general_append(subwd, &transfer)
+								parse(subwd, transfer, false)
 							},
 						},
 						PushButton{
@@ -237,19 +239,39 @@ func main() {
 			walk.MsgBox(mw, "提示", "请选择匹配模式", walk.MsgBoxIconWarning)
 			return
 		}
-		results_lm.UpdateItems(mw.search())
+		list, row_nums := mw.search()
+		//tablemodel.UpdateItems(list, row_nums)
+		results_list.UpdateItems(list, row_nums)
+
 	})
 
 	mw.Run()
 
 }
 
-func general_append(subwd *MySubWindow, transfer *map[string]string) {
+func parse(subwd *MySubWindow, transfer map[string]string, Reload bool) {
+	//清空transfer
+	transfer = make(map[string]string)
+	log.Println("清空之前的transfer")
+
 	if subwd.prase_path.Text() == "" {
 		walk.MsgBox(subwd, "提示", "请输入目录或文件", walk.MsgBoxIconWarning)
 		return
 	}
-	prase(subwd.prase_path.Text(), transfer)
+	if Reload {
+		walk.MsgBox(subwd, "提示", "正在清除目录中的文件", walk.MsgBoxIconWarning)
+		//先清除解析目录再判断有没有输入文件路径
+		err := clearOutputDir()
+		if err != nil {
+			log.Printf("Error clearing output directory %s: %v\n", outputDir, err)
+			walk.MsgBox(subwd, "提示", "Error clearing output directory", walk.MsgBoxIconWarning)
+		}
+	}
+
+	_prase(subwd.prase_path.Text(), transfer)
+	if err := reloadTransferToFile(transfer); err != nil {
+		log.Printf("Error reloading transfer to file: %v\n", err)
+	}
 	subwd.Accept()
 }
 
@@ -269,28 +291,58 @@ type MyMainWindow struct {
 	load              *walk.PushButton
 	target            *walk.LineEdit
 
-	out_num  *walk.LineEdit
-	res_list *walk.ListBox
+	out_num   *walk.LineEdit
+	res_list  *walk.ListBox
+	res_model *walk.TableView
 
 	match_mode string
 	typeLabel  *walk.Label
 	numLabel   *walk.Label
 }
 
-func (this *MyMainWindow) search() []string {
-	ret, err := _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
+func (this *MyMainWindow) search() ([]string, []string) {
+	result_list, target_row_nums, err := _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
 	if err != nil {
 		log.Printf("final Error :%v\n", err)
-		return nil
+		return nil, nil
 	} else {
-		this.numLabel.SetText(strconv.Itoa(len(ret)))
-		return ret
+		this.numLabel.SetText(strconv.Itoa(len(result_list)))
+		return result_list, target_row_nums
 	}
 }
 
+type ResultInfoModel struct {
+	walk.SortedReflectTableModelBase
+	results         []string
+	target_row_nums []string
+}
+
+func NewResultInfoModel() *ResultInfoModel {
+	return new(ResultInfoModel)
+}
+func (m *ResultInfoModel) Items() interface{} {
+	return m.results
+}
+
+func (m *ResultInfoModel) RowCount() int {
+	return len(m.results)
+}
+func (m *ResultInfoModel) Value(row, col int) interface{} {
+	return m.results[row][col]
+}
+
+func (m *ResultInfoModel) UpdateItems(items []string, rows []string) {
+	m.results = items
+	m.target_row_nums = rows
+	m.PublishRowsReset()
+}
+
+func (m *ResultInfoModel) ItemCount() {}
+
 type ResultsListModel struct {
 	walk.ListModelBase
-	results []string
+	results         []string
+	target_row_nums []string
 }
 
 func NewResultsListModel(items []string) *ResultsListModel {
@@ -305,8 +357,9 @@ func (m *ResultsListModel) Value(index int) interface{} {
 	return m.results[index]
 }
 
-func (m *ResultsListModel) UpdateItems(items []string) {
+func (m *ResultsListModel) UpdateItems(items []string, rows []string) {
 	m.results = items
+	m.target_row_nums = rows
 	m.PublishItemsReset()
 }
 

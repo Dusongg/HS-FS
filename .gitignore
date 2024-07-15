@@ -1,9 +1,11 @@
 /output
+/Image
 
+transfer.json
 *.syso
 
 *.manifest
 *.exe
 *.exe~
-*.mod
+go.mod
 *sum

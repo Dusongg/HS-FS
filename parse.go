@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"log"
@@ -11,9 +12,10 @@ import (
 	"strings"
 )
 
-var outputDir string = "./output"
+const outputDir string = "./output"
+const transferFile string = "./transfer.json"
 
-func prase(path string, transfer *map[string]string) {
+func _prase(path string, transfer map[string]string) {
 	//bug处理：文件路径不合法情况
 	dirs := strings.Split(path, ",") //bug:路径名带有,
 	for _, dir := range dirs {
@@ -59,7 +61,7 @@ func prase(path string, transfer *map[string]string) {
 				outputFileName := base_without_ext + ".code.txt"
 				outputPath := filepath.Join(outputDir, outputFileName)
 
-				(*transfer)[fmt.Sprintf("[%s]", base_without_ext)] = path
+				transfer[fmt.Sprintf("[%s]", base_without_ext)] = path
 
 				err = os.WriteFile(outputPath, []byte(codeContent), 0644)
 				if err != nil {
@@ -111,24 +113,8 @@ func clearOutputDir() error {
 }
 
 func filterCommentedCode(content string) string {
-	//lines := strings.Split(code, "\n")
-	//var uncommentedLines []string
-	//commentRegex := regexp.MustCompile(`^\s*(//|--)`)
-	//for _, line := range lines {
-	//	if !commentRegex.MatchString(line) {
-	//		//去除行内注释
-	//		if idx := strings.IndexAny(line, "//"); idx != -1 {
-	//			line = line[:idx] // 删除注释及其后面的内容
-	//		} else if idx2 := strings.IndexAny(line, "--"); idx2 != -1 {
-	//			line = line[:idx2]
-	//		}
-	//		uncommentedLines = append(uncommentedLines, line)
-	//	}
-	//}
-	//return strings.Join(uncommentedLines, "\n")
 	re := regexp.MustCompile(`//.*|/\*(.|\n)*?\*/|--.*`)
 	content = re.ReplaceAllString(content, "")
-
 	return content
 }
 
@@ -141,4 +127,24 @@ func addEscapeBackslash(path string) string {
 		builder.WriteRune(char)
 	}
 	return builder.String()
+}
+
+func reloadTransferToFile(m map[string]string) error {
+	transfer_json, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(transferFile, transfer_json, 0644)
+}
+func loadTransferFromFile() (map[string]string, error) {
+	data, err := os.ReadFile(transferFile)
+	if err != nil {
+		return nil, err
+	}
+	transfer := make(map[string]string)
+	err = json.Unmarshal(data, &transfer)
+	if err != nil {
+		return nil, err
+	}
+	return transfer, nil
 }
