@@ -18,13 +18,14 @@ const (
 )
 
 func main() {
+
 	transfer, err := loadTransferFromFile() //from parse.go  ,最开始无法加载
 	log.Printf("transfer size :%d", len(transfer))
 	if err != nil {
 		log.Println(err)
 	}
-	results_list := NewResultsListModel(nil) //from search.go
-	//tablemodel := NewResultInfoModel()
+	//results_list := NewResultsListModel(nil) //from search.go
+	tablemodel := NewResultInfoModel()
 
 	walk.AppendToWalkInit(func() {
 		walk.FocusEffect, _ = walk.NewBorderGlowEffect(walk.RGB(0, 63, 255))
@@ -97,38 +98,36 @@ func main() {
 					},
 				},
 			},
-			//下拉选项案例
-			//HSplitter{
-			//	Children: []Widget{
-			//		Label{
-			//			Text: "Preferred Food:",
-			//		},
-			//		ComboBox{
-			//			Editable: true,
-			//			Value:    Bind("PreferredFood"),
-			//			Model:    []string{"Fruit", "Grass", "Fish", "Meat"},
-			//		},
-			//	},
-			//},
 
-			ListBox{
-				AssignTo: &mw.res_list,
-				Model:    results_list,
-				//AlternatingRowBG: true,
-				//ColumnsOrderable: true,
-				OnItemActivated: func() {
-					index := mw.res_list.CurrentIndex()
-					target_file := extractLastBracketContent(results_list.results[index]) //拿掉调用链的最后一个函数
-					log.Printf("open : %s", target_file)
+			TableView{
+				AssignTo:         &mw.res_view,
+				Model:            tablemodel,
+				AlternatingRowBG: true,
+				ColumnsOrderable: true,
+				OnCurrentIndexChanged: func() {
+					if index := mw.res_view.CurrentIndex(); index > -1 {
+						target_file := extractLastBracketContent(tablemodel.results[index].call_chain) //拿掉调用链的最后一个函数
+						log.Printf("open : %s", target_file)
 
-					if source_file, exists := transfer[target_file]; exists {
-						cmd := exec.Command("cmd", "/c", "start", "", source_file)
-						if err := cmd.Run(); err != nil {
-							walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
+						if source_file, exists := transfer[target_file]; exists {
+							cmd := exec.Command("cmd", "/c", "start", "", source_file)
+							if err := cmd.Run(); err != nil {
+								walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
+							}
+						} else {
+							walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", tablemodel.results[index]), walk.MsgBoxIconError)
 						}
-					} else {
-						walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", results_list.results[index]), walk.MsgBoxIconError)
 					}
+				},
+				Columns: []TableViewColumn{
+					TableViewColumn{
+						DataMember: "call_chain",
+						Width:      700,
+					},
+					TableViewColumn{
+						DataMember: "target_row_nums",
+						Width:      230,
+					},
 				},
 
 				OnMouseDown: func(x, y int, button walk.MouseButton) {
@@ -239,9 +238,7 @@ func main() {
 			walk.MsgBox(mw, "提示", "请选择匹配模式", walk.MsgBoxIconWarning)
 			return
 		}
-		list, row_nums := mw.search()
-		//tablemodel.UpdateItems(list, row_nums)
-		results_list.UpdateItems(list, row_nums)
+		mw.search(tablemodel)
 
 	})
 
@@ -291,31 +288,37 @@ type MyMainWindow struct {
 	load              *walk.PushButton
 	target            *walk.LineEdit
 
-	out_num   *walk.LineEdit
-	res_list  *walk.ListBox
-	res_model *walk.TableView
+	out_num  *walk.LineEdit
+	res_view *walk.TableView
 
 	match_mode string
 	typeLabel  *walk.Label
 	numLabel   *walk.Label
 }
 
-func (this *MyMainWindow) search() ([]string, []string) {
+func (this *MyMainWindow) search(tablemodel *ResultInfoModel) {
 	result_list, target_row_nums, err := _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
 	if err != nil {
 		log.Printf("final Error :%v\n", err)
-		return nil, nil
+		tablemodel.UpdateItems(nil, nil)
 	} else {
 		this.numLabel.SetText(strconv.Itoa(len(result_list)))
-		return result_list, target_row_nums
+		tablemodel.UpdateItems(result_list, target_row_nums)
 	}
+
+}
+
+type ResultInfo struct {
+	call_chain      string
+	target_row_nums string
 }
 
 type ResultInfoModel struct {
 	walk.SortedReflectTableModelBase
-	results         []string
-	target_row_nums []string
+	results []ResultInfo
 }
+
+var _ walk.ReflectTableModel = new(FileInfoModel)
 
 func NewResultInfoModel() *ResultInfoModel {
 	return new(ResultInfoModel)
@@ -328,39 +331,34 @@ func (m *ResultInfoModel) RowCount() int {
 	return len(m.results)
 }
 func (m *ResultInfoModel) Value(row, col int) interface{} {
-	return m.results[row][col]
+	if col == 0 {
+		return m.results[row].call_chain
+	} else if col == 1 {
+		return m.results[row].target_row_nums
+	}
+	return nil
 }
 
-func (m *ResultInfoModel) UpdateItems(items []string, rows []string) {
-	m.results = items
-	m.target_row_nums = rows
+//func (m *ResultInfoModel) Value(row, col int) interface{} {
+//	if col == 0 {
+//		return m.results[row] // 返回整个字符串
+//	}
+//	return nil
+//}
+
+func (m *ResultInfoModel) UpdateItems(call_chains []string, rows []string) {
+	for id, cc := range call_chains {
+		item := ResultInfo{
+			call_chain:      cc,
+			target_row_nums: rows[id],
+		}
+		m.results = append(m.results, item)
+	}
+	log.Println("has flush")
+	for _, line := range m.results {
+		log.Println(line)
+	}
 	m.PublishRowsReset()
-}
-
-func (m *ResultInfoModel) ItemCount() {}
-
-type ResultsListModel struct {
-	walk.ListModelBase
-	results         []string
-	target_row_nums []string
-}
-
-func NewResultsListModel(items []string) *ResultsListModel {
-	return &ResultsListModel{results: items}
-}
-
-func (m *ResultsListModel) ItemCount() int {
-	return len(m.results)
-}
-
-func (m *ResultsListModel) Value(index int) interface{} {
-	return m.results[index]
-}
-
-func (m *ResultsListModel) UpdateItems(items []string, rows []string) {
-	m.results = items
-	m.target_row_nums = rows
-	m.PublishItemsReset()
 }
 
 func (this *MyMainWindow) SetType(mode string) {
