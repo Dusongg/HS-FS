@@ -17,18 +17,19 @@ type SearchResultInfo struct {
 }
 
 func _search(file_or_directory string, target string, mode string) *SearchResultInfo {
+	bitmap := NewBitmap(100)
 	path, err := os.Stat(file_or_directory)
 	if err != nil {
 		log.Println(err)
 	}
 	if path.IsDir() {
-		return directory_dfs(file_or_directory, target, mode)
+		return directory_dfs(file_or_directory, target, mode, bitmap)
 	} else {
-		return file_dfs(file_or_directory, target, mode)
+		return file_dfs(file_or_directory, target, mode, bitmap)
 	}
 }
 
-func directory_dfs(directory string, target string, mode string) *SearchResultInfo {
+func directory_dfs(directory string, target string, mode string, bmp *Bitmap) *SearchResultInfo {
 	result := &SearchResultInfo{}
 	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
 		//log.Println("start at: " + path)
@@ -42,16 +43,24 @@ func directory_dfs(directory string, target string, mode string) *SearchResultIn
 		if !info.IsDir() {
 			//输入类似："D:\1_hundsun代码\DevCodes\经纪业务运营平台V21\业务逻辑\存管\UFT接口管理\服务\LS_UFT接口管理_UFT系统委托同步结果查询.service_design"
 			//添加文件目录
-			intput_filename := outputDir + "/" + strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)) + ".code.txt"
+			func_name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+			intput_filename := outputDir + "/" + func_name + ".code.txt"
+			_func_name := fmt.Sprintf("[%s]", func_name)
 			//for _, result := range file_dfs(intput_filename, target, mode) {
 			//	results = append(results, strings.TrimSuffix(path, filepath.Base(path)) + ": " + result)
 			//}
-			ret := file_dfs(intput_filename, target, mode)
-			if len(ret.Errs) != 0 {
-				result.Errs = append(result.Errs, ret.Errs...)
+
+			if tv, exist := transfer[_func_name]; exist && !bmp.IsSet(tv.SerialNumber) {
+				bmp.Set(transfer[_func_name].SerialNumber)
+				ret := file_dfs(intput_filename, target, mode, bmp)
+				if len(ret.Errs) != 0 {
+					result.Errs = append(result.Errs, ret.Errs...)
+				}
+				result.CallChain = append(result.CallChain, ret.CallChain...)
+				result.TargetRowNums = append(result.TargetRowNums, ret.TargetRowNums...)
+				bmp.Clear(tv.SerialNumber)
 			}
-			result.CallChain = append(result.CallChain, ret.CallChain...)
-			result.TargetRowNums = append(result.TargetRowNums, ret.TargetRowNums...)
+
 		}
 		return nil
 	})
@@ -62,8 +71,8 @@ func directory_dfs(directory string, target string, mode string) *SearchResultIn
 	return result
 }
 
-func file_dfs(_filepath string, target string, mode string) *SearchResultInfo {
-	log.Println("now in: " + _filepath)
+func file_dfs(_filepath string, target string, mode string, bmp *Bitmap) *SearchResultInfo {
+	//log.Println("now in: " + _filepath)
 	result := &SearchResultInfo{}
 	var matches []string //该文件调用的原子或业务逻辑
 
@@ -77,8 +86,6 @@ func file_dfs(_filepath string, target string, mode string) *SearchResultInfo {
 		//regex = regexp.MustCompile("\\.\\d+")
 	}
 
-	M_regex := regexp.MustCompile(`\[(AS|AF|AP|LF|LS)_[^]]+\]`)
-
 	file, err := os.Open(_filepath)
 	if err != nil {
 		result.Errs = append(result.Errs, fmt.Sprintf("Error opening file : %v\n", err))
@@ -86,12 +93,17 @@ func file_dfs(_filepath string, target string, mode string) *SearchResultInfo {
 	}
 	defer file.Close()
 
+	func_name := fmt.Sprintf("[%s]", strings.TrimSuffix(filepath.Base(_filepath), ".code.txt")) //[AF_xxx|AS_xx|LF_xx....]
+	bmp.Set(transfer[func_name].SerialNumber)
+
+	func_regex := regexp.MustCompile(`\[(AS|AF|AP|LF|LS)_[^]]+\]`)
 	is_found := false
 	scanner := bufio.NewScanner(file)
 	lineNumber := 1
-	var ans_lines []int //当前文件匹配到target所在行
-	var first_matches_lines []int
 	seen := make(map[string]bool) //去重
+	var ans_lines []int           //当前文件匹配到target所在行
+	var first_matches_lines []int
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		if regex.MatchString(line) {
@@ -102,7 +114,7 @@ func file_dfs(_filepath string, target string, mode string) *SearchResultInfo {
 		}
 
 		//考虑每一行只有一个[AS|AF|AP|LF|LS]
-		submatch := M_regex.FindString(line)
+		submatch := func_regex.FindString(line)
 		if submatch != "" && !seen[submatch] {
 			seen[submatch] = true
 			first_matches_lines = append(first_matches_lines, lineNumber)
@@ -117,8 +129,6 @@ func file_dfs(_filepath string, target string, mode string) *SearchResultInfo {
 		lineNumber++
 	}
 
-	//log.Println("total : " + strconv.Itoa(len(ans_lines))) //debug
-	func_name := fmt.Sprintf("[%s]", strings.TrimSuffix(filepath.Base(_filepath), ".code.txt")) //[AF_xxx|AS_xx|LF_xx....]
 	var row string
 	if is_found {
 		for _, line := range ans_lines {
@@ -128,20 +138,33 @@ func file_dfs(_filepath string, target string, mode string) *SearchResultInfo {
 		result.TargetRowNums = append(result.TargetRowNums, row)
 	}
 
-	for id, match := range matches {
-		next_file := outputDir + "/" + match[1:len(match)-1] + ".code.txt"
-
+	for id, match_func_name := range matches {
+		next_file := outputDir + "/" + match_func_name[1:len(match_func_name)-1] + ".code.txt"
 		//dfs
-		rets := file_dfs(next_file, target, mode)
+		if tv, exist := transfer[match_func_name]; exist && !bmp.IsSet(tv.SerialNumber) {
+			bmp.Set(tv.SerialNumber)
+			rets := file_dfs(next_file, target, mode, bmp)
+			if rets.Errs != nil {
+				for _, e := range rets.Errs {
+					//那个文件在哪一行调用那个方法导致报错
+					result.Errs = append(result.Errs, fmt.Sprintf("%s<%d> -> %s", func_name, first_matches_lines[id], e))
+				}
+			}
 
-		if rets.Errs != nil {
-			result.Errs = append(result.Errs, fmt.Sprintf("%s<%d> -> ", func_name, first_matches_lines[id])) //那个文件在哪一行调用那个方法导致报错
+			for i, call_chain := range rets.CallChain {
+				result.CallChain = append(result.CallChain, func_name+" -> "+call_chain)
+				result.TargetRowNums = append(result.TargetRowNums, rets.TargetRowNums[i])
+			}
+			bmp.Clear(tv.SerialNumber)
+		} else {
+			if !exist {
+				result.Errs = append(result.Errs, fmt.Sprintf("%s<%d> -> %s was not found", func_name, first_matches_lines[id], match_func_name))
+			} else {
+				result.Errs = append(result.Errs, fmt.Sprintf("%s<%d> -> %s has been visited", match_func_name, first_matches_lines[id], func_name))
+
+			}
 		}
 
-		for i, call_chain := range rets.CallChain {
-			result.CallChain = append(result.CallChain, func_name+" -> "+call_chain)
-			result.TargetRowNums = append(result.TargetRowNums, rets.TargetRowNums[i])
-		}
 	}
 
 	if err := scanner.Err(); err != nil {

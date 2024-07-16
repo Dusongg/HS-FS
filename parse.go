@@ -12,10 +12,16 @@ import (
 	"strings"
 )
 
+type transferValue struct {
+	SerialNumber int
+	OriginPath   string
+}
+
 const outputDir string = "./output"
 const transferFile string = "./transfer.json"
 
-func _prase(path string, transfer map[string]string) {
+func _prase(path string) {
+	serial_num := 0
 	//bug处理：文件路径不合法情况
 	dirs := strings.Split(path, ",") //bug:路径名带有,
 	for _, dir := range dirs {
@@ -59,9 +65,14 @@ func _prase(path string, transfer map[string]string) {
 				}
 				base_without_ext := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 				outputFileName := base_without_ext + ".code.txt"
+
 				outputPath := filepath.Join(outputDir, outputFileName)
 
-				transfer[fmt.Sprintf("[%s]", base_without_ext)] = path
+				transfer[fmt.Sprintf("[%s]", base_without_ext)] = transferValue{
+					SerialNumber: serial_num,
+					OriginPath:   path,
+				}
+				serial_num++
 
 				err = os.WriteFile(outputPath, []byte(codeContent), 0644)
 				if err != nil {
@@ -129,22 +140,21 @@ func addEscapeBackslash(path string) string {
 	return builder.String()
 }
 
-func reloadTransferToFile(m map[string]string) error {
-	transfer_json, err := json.Marshal(m)
+func reloadTransferToFile() error {
+	transfer_json, err := json.Marshal(transfer)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(transferFile, transfer_json, 0644)
 }
-func loadTransferFromFile() (map[string]string, error) {
+func loadTransferFromFile() error {
 	data, err := os.ReadFile(transferFile)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	transfer := make(map[string]string)
 	err = json.Unmarshal(data, &transfer)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return transfer, nil
+	return nil
 }

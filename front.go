@@ -17,16 +17,19 @@ const (
 	REGEX_MATCH = "REGEX_MATCH"
 )
 
-func main() {
+var transfer map[string]transferValue
 
-	transfer, err := loadTransferFromFile() //from parse.go  ,最开始无法加载
+func init() {
+	//TODO:transfer应该是服务端开始就创建的，后面将他搬离front部分，  考虑将这部分用redis实现
+	err := loadTransferFromFile() //from parse.go  ,最开始无法加载
 	log.Printf("transfer size :%d", len(transfer))
 	if err != nil {
 		log.Println(err)
 	}
-	results_table := NewResultInfoModel()
-	errs_table := NewErrInfoModel()
+}
 
+func main() {
+	//窗口样式
 	walk.AppendToWalkInit(func() {
 		walk.FocusEffect, _ = walk.NewBorderGlowEffect(walk.RGB(0, 63, 255))
 		walk.InteractionEffect, _ = walk.NewDropShadowEffect(walk.RGB(63, 63, 63))
@@ -35,6 +38,8 @@ func main() {
 
 	mw := &MyMainWindow{}
 	subwd := &MySubWindow{}
+	results_table := NewResultInfoModel()
+	errs_table := NewErrInfoModel()
 
 	if err := (MainWindow{
 		Title: "hs_file_searcher",
@@ -111,8 +116,8 @@ func main() {
 						target_file := extractLastBracketContent(results_table.results[index].call_chain) //拿掉调用链的最后一个函数
 						log.Printf("open : %s", target_file)
 
-						if source_file, exists := transfer[target_file]; exists {
-							cmd := exec.Command("cmd", "/c", "start", "", source_file)
+						if transfer_value, exists := transfer[target_file]; exists {
+							cmd := exec.Command("cmd", "/c", "start", "", transfer_value.OriginPath)
 							if err := cmd.Run(); err != nil {
 								walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
 							}
@@ -250,7 +255,7 @@ func main() {
 			walk.MsgBox(mw, "提示", "请选择匹配模式", walk.MsgBoxIconWarning)
 			return
 		}
-		mw.search(results_table)
+		mw.search(results_table, errs_table)
 
 	})
 
@@ -258,10 +263,10 @@ func main() {
 
 }
 
-func parse(subwd *MySubWindow, transfer map[string]string, Reload bool) {
+func parse(subwd *MySubWindow, transfer map[string]transferValue, Reload bool) {
 	//清空transfer
-	transfer = make(map[string]string)
-	log.Println("清空之前的transfer")
+	transfer = nil
+	log.Println("清空transfer")
 
 	if subwd.prase_path.Text() == "" {
 		walk.MsgBox(subwd, "提示", "请输入目录或文件", walk.MsgBoxIconWarning)
@@ -277,8 +282,8 @@ func parse(subwd *MySubWindow, transfer map[string]string, Reload bool) {
 		}
 	}
 
-	_prase(subwd.prase_path.Text(), transfer)
-	if err := reloadTransferToFile(transfer); err != nil {
+	_prase(subwd.prase_path.Text())
+	if err := reloadTransferToFile(); err != nil {
 		log.Printf("Error reloading transfer to file: %v\n", err)
 	}
 	subwd.Accept()
@@ -310,12 +315,13 @@ type MyMainWindow struct {
 	errLable   *walk.Label
 }
 
-func (this *MyMainWindow) search(tablemodel *ResultInfoModel) {
+func (this *MyMainWindow) search(result_table *ResultInfoModel, errs_table *ErrInfoModel) {
 	result := _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
 	this.numLabel.SetText("查询结果数量：" + strconv.Itoa(len(result.CallChain)))
 	this.errLable.SetText("报错数量： " + strconv.Itoa(len(result.Errs)))
 
-	tablemodel.UpdateItems(result.CallChain, result.TargetRowNums)
+	result_table.UpdateItems(result.CallChain, result.TargetRowNums)
+	errs_table.UpdateItems(result.Errs)
 }
 
 type ResultInfo struct {
