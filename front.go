@@ -24,8 +24,8 @@ func main() {
 	if err != nil {
 		log.Println(err)
 	}
-	//results_list := NewResultsListModel(nil) //from search.go
-	tablemodel := NewResultInfoModel()
+	results_table := NewResultInfoModel()
+	errs_table := NewErrInfoModel()
 
 	walk.AppendToWalkInit(func() {
 		walk.FocusEffect, _ = walk.NewBorderGlowEffect(walk.RGB(0, 63, 255))
@@ -39,7 +39,7 @@ func main() {
 	if err := (MainWindow{
 		Title: "hs_file_searcher",
 		// 指定窗口的大小
-		MinSize:  Size{},
+		MinSize:  Size{Width: 500, Height: 640},
 		AssignTo: &mw.MainWindow,
 		Layout: VBox{
 			MarginsZero: true,
@@ -100,13 +100,15 @@ func main() {
 			},
 
 			TableView{
-				AssignTo:         &mw.res_view,
-				Model:            tablemodel,
+				AssignTo: &mw.res_view,
+				Model:    results_table,
+				MinSize:  Size{Width: 500, Height: 350},
+
 				AlternatingRowBG: true,
 				ColumnsOrderable: true,
 				OnCurrentIndexChanged: func() {
 					if index := mw.res_view.CurrentIndex(); index > -1 {
-						target_file := extractLastBracketContent(tablemodel.results[index].call_chain) //拿掉调用链的最后一个函数
+						target_file := extractLastBracketContent(results_table.results[index].call_chain) //拿掉调用链的最后一个函数
 						log.Printf("open : %s", target_file)
 
 						if source_file, exists := transfer[target_file]; exists {
@@ -115,7 +117,7 @@ func main() {
 								walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
 							}
 						} else {
-							walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", tablemodel.results[index]), walk.MsgBoxIconError)
+							walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", results_table.results[index]), walk.MsgBoxIconError)
 						}
 					}
 				},
@@ -126,22 +128,32 @@ func main() {
 					},
 					TableViewColumn{
 						DataMember: "target_row_nums",
-						Width:      230,
+						Width:      300,
 					},
 				},
+			},
 
-				OnMouseDown: func(x, y int, button walk.MouseButton) {
-				},
-				OnMouseMove: func(x, y int, button walk.MouseButton) {
-					//index := mw.res_list.CurrentIndex()
+			TableView{
+				AssignTo:         &mw.err_view,
+				Model:            errs_table,
+				AlternatingRowBG: true,
+				ColumnsOrderable: true,
+				MinSize:          Size{Width: 500, Height: 150},
 
+				Columns: []TableViewColumn{
+					TableViewColumn{
+						Width:      1000,
+						DataMember: "errs",
+					},
 				},
 			},
-			Label{Text: "查询结果数量： ", AssignTo: &mw.numLabel},
 
 			Composite{
 				Layout: HBox{},
 				Children: []Widget{
+					Label{Text: "查询结果数量： ", AssignTo: &mw.numLabel},
+					HSpacer{Size: 10},
+					Label{Text: "报错数量： ", AssignTo: &mw.errLable},
 					HSpacer{},
 					PushButton{AssignTo: &mw.run, Text: "Run"},
 
@@ -238,7 +250,7 @@ func main() {
 			walk.MsgBox(mw, "提示", "请选择匹配模式", walk.MsgBoxIconWarning)
 			return
 		}
-		mw.search(tablemodel)
+		mw.search(results_table)
 
 	})
 
@@ -290,22 +302,20 @@ type MyMainWindow struct {
 
 	out_num  *walk.LineEdit
 	res_view *walk.TableView
+	err_view *walk.TableView
 
 	match_mode string
 	typeLabel  *walk.Label
 	numLabel   *walk.Label
+	errLable   *walk.Label
 }
 
 func (this *MyMainWindow) search(tablemodel *ResultInfoModel) {
-	result_list, target_row_nums, err := _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
-	if err != nil {
-		log.Printf("final Error :%v\n", err)
-		tablemodel.UpdateItems(nil, nil)
-	} else {
-		this.numLabel.SetText(strconv.Itoa(len(result_list)))
-		tablemodel.UpdateItems(result_list, target_row_nums)
-	}
+	result := _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
+	this.numLabel.SetText("查询结果数量：" + strconv.Itoa(len(result.CallChain)))
+	this.errLable.SetText("报错数量： " + strconv.Itoa(len(result.Errs)))
 
+	tablemodel.UpdateItems(result.CallChain, result.TargetRowNums)
 }
 
 type ResultInfo struct {
@@ -315,7 +325,7 @@ type ResultInfo struct {
 
 type ResultInfoModel struct {
 	walk.SortedReflectTableModelBase
-	results []ResultInfo
+	results []*ResultInfo
 }
 
 var _ walk.ReflectTableModel = new(FileInfoModel)
@@ -338,25 +348,49 @@ func (m *ResultInfoModel) Value(row, col int) interface{} {
 	}
 	return nil
 }
-
-//func (m *ResultInfoModel) Value(row, col int) interface{} {
-//	if col == 0 {
-//		return m.results[row] // 返回整个字符串
-//	}
-//	return nil
-//}
-
 func (m *ResultInfoModel) UpdateItems(call_chains []string, rows []string) {
+	m.results = nil //清空之前的
 	for id, cc := range call_chains {
-		item := ResultInfo{
+		item := &ResultInfo{
 			call_chain:      cc,
 			target_row_nums: rows[id],
 		}
 		m.results = append(m.results, item)
 	}
-	log.Println("has flush")
-	for _, line := range m.results {
-		log.Println(line)
+	m.PublishRowsReset()
+}
+
+type ErrInfo struct {
+	err_info string
+}
+type ErrInfoModel struct {
+	walk.SortedReflectTableModelBase
+	errs []*ErrInfo
+}
+
+func NewErrInfoModel() *ErrInfoModel {
+	return new(ErrInfoModel)
+}
+func (m *ErrInfoModel) Items() interface{} {
+	return m.errs
+}
+
+func (m *ErrInfoModel) RowCount() int {
+	return len(m.errs)
+}
+func (m *ErrInfoModel) Value(row, col int) interface{} {
+	if col == 0 {
+		return m.errs[row].err_info
+	}
+	return nil
+}
+func (m *ErrInfoModel) UpdateItems(errs []string) {
+	m.errs = nil
+	for _, err := range errs {
+		item := &ErrInfo{
+			err_info: err,
+		}
+		m.errs = append(m.errs, item)
 	}
 	m.PublishRowsReset()
 }

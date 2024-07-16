@@ -10,7 +10,13 @@ import (
 	"strings"
 )
 
-func _search(file_or_directory string, target string, mode string) ([]string, []string, error) {
+type SearchResultInfo struct {
+	CallChain     []string
+	TargetRowNums []string
+	Errs          []string
+}
+
+func _search(file_or_directory string, target string, mode string) *SearchResultInfo {
 	path, err := os.Stat(file_or_directory)
 	if err != nil {
 		log.Println(err)
@@ -22,10 +28,10 @@ func _search(file_or_directory string, target string, mode string) ([]string, []
 	}
 }
 
-func directory_dfs(directory string, target string, mode string) ([]string, []string, error) {
-	var results []string
-	var row_nums []string
+func directory_dfs(directory string, target string, mode string) *SearchResultInfo {
+	result := &SearchResultInfo{}
 	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
+		//log.Println("start at: " + path)
 		if err != nil {
 			return err
 		}
@@ -40,23 +46,26 @@ func directory_dfs(directory string, target string, mode string) ([]string, []st
 			//for _, result := range file_dfs(intput_filename, target, mode) {
 			//	results = append(results, strings.TrimSuffix(path, filepath.Base(path)) + ": " + result)
 			//}
-			rets, rows, err := file_dfs(intput_filename, target, mode)
-			if err != nil {
-				return fmt.Errorf("%s -> %v", path, err)
-			} else {
-				results = append(results, rets...)
-				row_nums = append(row_nums, rows...)
+			ret := file_dfs(intput_filename, target, mode)
+			if len(ret.Errs) != 0 {
+				result.Errs = append(result.Errs, ret.Errs...)
 			}
+			result.CallChain = append(result.CallChain, ret.CallChain...)
+			result.TargetRowNums = append(result.TargetRowNums, ret.TargetRowNums...)
 		}
 		return nil
 	})
-	return results, row_nums, err
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
+	return result
 }
 
-func file_dfs(_filepath string, target string, mode string) ([]string, []string, error) {
-	var results []string
-	var row_nums []string //target所在行号
-	var matches []string  //该文件调用的原子或业务逻辑
+func file_dfs(_filepath string, target string, mode string) *SearchResultInfo {
+	log.Println("now in: " + _filepath)
+	result := &SearchResultInfo{}
+	var matches []string //该文件调用的原子或业务逻辑
 
 	var regex *regexp.Regexp
 	switch mode {
@@ -72,8 +81,8 @@ func file_dfs(_filepath string, target string, mode string) ([]string, []string,
 
 	file, err := os.Open(_filepath)
 	if err != nil {
-		log.Printf("Error opening file : %v\n", err) //bug
-		return results, row_nums, err
+		result.Errs = append(result.Errs, fmt.Sprintf("Error opening file : %v\n", err))
+		return result
 	}
 	defer file.Close()
 
@@ -99,6 +108,7 @@ func file_dfs(_filepath string, target string, mode string) ([]string, []string,
 			first_matches_lines = append(first_matches_lines, lineNumber)
 			matches = append(matches, submatch)
 		}
+		//TODO考虑每一行有多个[AS|AF|AP|LF|LS]
 		//submatches := M_regex.FindAllString(line, -1)
 		//if submatches != nil {
 		//	matches = append(matches, submatches...)
@@ -114,25 +124,23 @@ func file_dfs(_filepath string, target string, mode string) ([]string, []string,
 		for _, line := range ans_lines {
 			row += fmt.Sprintf("<%d>", line)
 		}
-		results = append(results, func_name)
-		row_nums = append(row_nums, row)
+		result.CallChain = append(result.CallChain, func_name)
+		result.TargetRowNums = append(result.TargetRowNums, row)
 	}
 
 	for id, match := range matches {
 		next_file := outputDir + "/" + match[1:len(match)-1] + ".code.txt"
 
 		//dfs
-		rets, rows, ret_err := file_dfs(next_file, target, mode)
+		rets := file_dfs(next_file, target, mode)
 
-		if ret_err != nil {
-			err_with_path := fmt.Errorf("%s<%d> -> %v", func_name, first_matches_lines[id], ret_err) //那个文件在哪一行调用那个方法导致报错
-			return results, rows, err_with_path
-		} else {
-			for i, ret_result := range rets {
-				results = append(results, func_name+" -> "+ret_result)
-				row_nums = append(row_nums, rows[i])
-			}
+		if rets.Errs != nil {
+			result.Errs = append(result.Errs, fmt.Sprintf("%s<%d> -> ", func_name, first_matches_lines[id])) //那个文件在哪一行调用那个方法导致报错
+		}
 
+		for i, call_chain := range rets.CallChain {
+			result.CallChain = append(result.CallChain, func_name+" -> "+call_chain)
+			result.TargetRowNums = append(result.TargetRowNums, rets.TargetRowNums[i])
 		}
 	}
 
@@ -140,5 +148,5 @@ func file_dfs(_filepath string, target string, mode string) ([]string, []string,
 		log.Println("Error reading file:", err)
 	}
 
-	return results, row_nums, nil
+	return result
 }
