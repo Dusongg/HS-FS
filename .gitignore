@@ -1,9 +1,10 @@
 /output
 /Image
+.idea
+
 
 transfer.json
 *.syso
-
 *.manifest
 *.exe
 *.exe~
