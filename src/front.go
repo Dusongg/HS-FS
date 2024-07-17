@@ -5,7 +5,9 @@ import (
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,15 +19,17 @@ const (
 	REGEX_MATCH = "REGEX_MATCH"
 )
 
-var transfer map[string]transferValue
+var transfer = make(map[string]transferValue)
 
 func init() {
 	//TODO:transfer应该是服务端开始就创建的，后面将他搬离front部分，  考虑将这部分用redis实现
+	log.Println("Initializing transfer")
 	err := loadTransferFromFile() //from parse.go  ,最开始无法加载
-	log.Printf("transfer size :%d", len(transfer))
 	if err != nil {
-		log.Println(err)
+		log.Printf("laod transferfile err: %v\n", err)
 	}
+	log.Printf("transfer size :%d", len(transfer))
+
 }
 
 func main() {
@@ -196,7 +200,7 @@ func main() {
 					Layout: Grid{Columns: 10},
 					Children: []Widget{
 						LineEdit{
-							Text:     "输入待解析得目录或文件(以英文逗号分割)",
+							Text:     "输入待预处理的目录或文件(以英文逗号分割)",
 							AssignTo: &subwd.prase_path,
 							MaxSize:  Size{Width: 450, Height: 20},
 						},
@@ -209,6 +213,20 @@ func main() {
 							OnClicked: func() {
 								browser(subwd)
 							},
+						},
+					},
+				},
+				Composite{
+					Layout: Grid{Columns: 10},
+					Children: []Widget{
+						LineEdit{
+							Text:     "更改输出文件路径",
+							AssignTo: &subwd.cust_output_path,
+							MaxSize:  Size{Width: 450, Height: 20},
+						},
+						PushButton{
+							Text:     "OK",
+							AssignTo: &subwd.cust_ok,
 						},
 					},
 				},
@@ -240,10 +258,35 @@ func main() {
 		}.Create(mw)); err != nil {
 			return
 		}
+
+		subwd.cust_ok.Clicked().Attach(func() {
+			if _, err := os.Stat(filepath.Join(ROOT_DIR, where_output_file)); os.IsNotExist(err) {
+				walk.MsgBox(mw, "提示", fmt.Sprintf("%s 该文件目录不存在", filepath.Join(ROOT_DIR, where_output_file)), walk.MsgBoxIconWarning)
+				return
+			}
+			file, err := os.OpenFile(filepath.Join(ROOT_DIR, where_output_file), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+			defer file.Close()
+			if err != nil {
+				walk.MsgBox(mw, "提示", fmt.Sprintf("%s 打开该文件失败", filepath.Join(ROOT_DIR, where_output_file)), walk.MsgBoxIconWarning)
+			}
+			log.Printf("更改路径：%s\n", subwd.cust_output_path.Text())
+			_, err = file.WriteString(subwd.cust_output_path.Text())
+			if err != nil {
+				log.Printf("向 %s 写入 %s 错误 : %v\n", filepath.Join(ROOT_DIR, where_output_file), subwd.cust_output_path.Text(), err)
+			}
+			outputDir = subwd.cust_output_path.Text()
+		})
+
 		subwd.Run()
 	})
 
 	mw.run.Clicked().Attach(func() {
+		files, err := os.ReadDir(outputDir)
+		if err != nil {
+			walk.MsgBox(mw, "提示", "打开output文件夹失败，请先点击parse预处理文件", walk.MsgBoxIconWarning)
+		} else if len(files) <= 100 {
+			walk.MsgBox(mw, "提示", "output内文件数量过少或没有，请确实您是否已经预处理过文件", walk.MsgBoxIconWarning)
+		}
 		switch {
 		case mw.file_or_directory.Text() == "":
 			walk.MsgBox(mw, "提示", "请输入目标所在文件或目录", walk.MsgBoxIconWarning)
@@ -291,7 +334,9 @@ func parse(subwd *MySubWindow, transfer map[string]transferValue, Reload bool) {
 
 type MySubWindow struct {
 	*walk.Dialog
-	prase_path *walk.LineEdit
+	prase_path       *walk.LineEdit
+	cust_output_path *walk.LineEdit
+	cust_ok          *walk.PushButton
 }
 
 type MyMainWindow struct {

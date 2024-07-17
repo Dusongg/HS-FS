@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -17,8 +18,43 @@ type transferValue struct {
 	OriginPath   string
 }
 
-const outputDir string = "../output"
-const transferFile string = "../transfer.json"
+//TODO:提示解析警告
+//TODO:自定义选择解析完后的文件路径，生成文件保存这个设定
+
+const ROOT_DIR string = "D:\\HS-FS"
+const where_output_file string = "outputdir.txt"
+const transferFile string = "D:\\HS-FS\\transfer.json"
+
+var outputDir string
+
+func init() {
+	log.Println("Initializing outputDir")
+	if _, err := os.Stat(ROOT_DIR); os.IsNotExist(err) {
+		err := os.Mkdir(ROOT_DIR, 0755)
+		if err != nil {
+			log.Printf("failed to create output directory: %v", err)
+		}
+	}
+	where_output := filepath.Join(ROOT_DIR, where_output_file)
+	if _, err := os.Stat(where_output); os.IsNotExist(err) {
+		file, err := os.Create(where_output)
+		if err != nil {
+			log.Printf("failed to create output_path file: %v", err)
+		}
+		defer file.Close()
+		file.WriteString("D:\\HS-FS\\output")
+	}
+	file, err := os.Open(filepath.Join(ROOT_DIR, where_output_file))
+	if err != nil {
+		log.Printf("failed to open file: %v", err)
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		outputDir = scanner.Text()
+	}
+	log.Println("Output dir:", outputDir)
+}
 
 func _prase(path string) {
 	serial_num := 0
@@ -58,7 +94,7 @@ func _prase(path string) {
 				codeContent := filterCommentedCode(hsdoc.Code) //去注释
 
 				if _, err := os.Stat(outputDir); os.IsNotExist(err) {
-					err = os.Mkdir(outputDir, 0755)
+					err = os.MkdirAll(outputDir, 0755)
 					if err != nil {
 						return fmt.Errorf("failed to create output directory: %v", err)
 					}
@@ -148,6 +184,11 @@ func reloadTransferToFile() error {
 	return os.WriteFile(transferFile, transfer_json, 0644)
 }
 func loadTransferFromFile() error {
+	_, err := os.OpenFile(transferFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+
 	data, err := os.ReadFile(transferFile)
 	if err != nil {
 		return err
