@@ -2,20 +2,32 @@
 
 ## 1 预处理文件
 
+### 1.1 Parse
+
 1. 点击Parse，打开预处理菜单，(预处理完的文件放在output目录下，该目录位于在HS_FS文件目录下)
 
-![image-20240717095856237](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717095856237.png)
+![image-20240717155105554](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717155105554.png)
 
 - Reload：清空output文件夹，重新加载
 - Append：向output文件夹里新增文件
 
-
-
 2. 输入待处理的文件或目录
 
+### 1.2 自定义输出文件路径
 
+1. 默认输出路径
 
-3. （可选）Browser使用说明
+![image-20240717155019007](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717155019007.png)
+
+2. 自定义输出路径
+
+![image-20240717155247789](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717155247789.png)
+
+该路径会保存到指定文件（outputdir.txt），用于后续寻找
+
+![image-20240717155336156](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717155336156.png)
+
+### 1.3（可选）Browser使用说明
 
 ![image-20240717101417481](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717101417481.png)
 
