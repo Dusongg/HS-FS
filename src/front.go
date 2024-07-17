@@ -42,7 +42,7 @@ func main() {
 	errs_table := NewErrInfoModel()
 
 	if err := (MainWindow{
-		Title: "hs_file_searcher",
+		Title: "HS-FS",
 		// 指定窗口的大小
 		MinSize:  Size{Width: 500, Height: 640},
 		AssignTo: &mw.MainWindow,
@@ -60,16 +60,13 @@ func main() {
 						Text: "目录 / 文件: ",
 					},
 					LineEdit{
-						//bug
-						OnMouseDown: func(x, y int, button walk.MouseButton) {
-							mw.file_or_directory.SetText("")
-						},
 						Text:     "Drop or Paste files here",
 						AssignTo: &mw.file_or_directory,
 					},
 					PushButton{
 						Text: "Browser",
 						OnClicked: func() {
+							mw.file_or_directory.SetText("")
 							browser(mw)
 						},
 					},
@@ -98,6 +95,9 @@ func main() {
 								Name:     "regular_match",
 								Text:     "正则匹配",
 								AssignTo: &mw.type_regular_match,
+								OnClicked: func() {
+									walk.MsgBox(mw, "提示", "该功能尚未实现", walk.MsgBoxIconWarning)
+								},
 							},
 						},
 					},
@@ -128,11 +128,11 @@ func main() {
 				},
 				Columns: []TableViewColumn{
 					TableViewColumn{
-						DataMember: "call_chain",
+						DataMember: "调用链",
 						Width:      700,
 					},
 					TableViewColumn{
-						DataMember: "target_row_nums",
+						DataMember: "目标所在行",
 						Width:      300,
 					},
 				},
@@ -148,7 +148,7 @@ func main() {
 				Columns: []TableViewColumn{
 					TableViewColumn{
 						Width:      1000,
-						DataMember: "errs",
+						DataMember: "报错",
 					},
 				},
 			},
@@ -162,7 +162,7 @@ func main() {
 					HSpacer{},
 					PushButton{AssignTo: &mw.run, Text: "Run"},
 
-					PushButton{AssignTo: &mw.load, Text: "Prase"},
+					PushButton{AssignTo: &mw.load, Text: "Parse"},
 					PushButton{Text: "Cancel", OnClicked: func() {
 						mw.Close()
 					}},

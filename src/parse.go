@@ -17,8 +17,8 @@ type transferValue struct {
 	OriginPath   string
 }
 
-const outputDir string = "./output"
-const transferFile string = "./transfer.json"
+const outputDir string = "../output"
+const transferFile string = "../transfer.json"
 
 func _prase(path string) {
 	serial_num := 0

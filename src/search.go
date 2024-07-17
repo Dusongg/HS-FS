@@ -83,7 +83,9 @@ func file_dfs(_filepath string, target string, mode string, bmp *Bitmap) *Search
 		regex = regexp.MustCompile("\\b" + regexp.QuoteMeta(target) + "\\b")
 	//正则模糊匹配
 	case REGEX_MATCH:
+		//TODO:该功能待实现
 		//regex = regexp.MustCompile("\\.\\d+")
+		return nil
 	}
 
 	file, err := os.Open(_filepath)
