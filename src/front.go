@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -24,7 +25,6 @@ var LOG = log.New(os.Stdout, "INFO: ", log.LstdFlags|log.Lshortfile)
 var transfer = make(map[string]transferValue)
 
 func init() {
-	//TODO:transfer应该是服务端开始就创建的，后面将他搬离front部分，  考虑将这部分用redis实现
 	LOG.Println("Initializing transfer")
 	err := loadTransferFromFile() //from parse.go  ,最开始无法加载
 	if err != nil {
@@ -158,6 +158,8 @@ func main() {
 					Label{Text: "查询结果数量： ", AssignTo: &mw.numLabel},
 					HSpacer{Size: 10},
 					Label{Text: "报错数量： ", AssignTo: &mw.errLable},
+					HSpacer{Size: 10},
+					Label{Text: "搜索总耗时： ", AssignTo: &mw.timeLable},
 					HSpacer{},
 
 					CheckBox{
@@ -376,28 +378,115 @@ func parse(mw *MyMainWindow, Reload bool) {
 		return
 	}
 	if Reload {
-		LOG.Println("正在清除output文件夹")
-		//TODO：改界面
-		walk.MsgBox(mw, "提示", "正在清除目录中的文件", walk.MsgBoxIconWarning)
-		//先清除解析目录再判断有没有输入文件路径
-		err := clearOutputDir()
-		if err != nil {
-			LOG.Printf("Error clearing output directory %s: %v\n", outputDir, err)
-			walk.MsgBox(mw, "提示", "Error clearing output directory", walk.MsgBoxIconWarning)
-		}
+		files, _ := os.ReadDir(outputDir)
+		LOG.Printf("正在清除output文件夹， 文件数量：%d\n", len(files))
+
+		mw_clean := new(ProcessMW)
+		MainWindow{
+			AssignTo: &mw_clean.MainWindow,
+			Title:    "正在清除output文件夹",
+			Size:     Size{500, 200},
+			Layout:   VBox{},
+			Children: []Widget{
+				Composite{
+					Layout: Grid{Columns: 1},
+					Children: []Widget{
+						Label{
+							Text:      fmt.Sprintf("正在清除 %s 中的文件", outputDir),
+							Alignment: AlignHNearVNear,
+						},
+					},
+				},
+				Composite{
+					Layout: Grid{Columns: 2},
+					Children: []Widget{
+						ProgressBar{
+							AssignTo: &mw_clean.progressBar,
+							MinValue: 0,
+							MaxValue: len(files),
+							OnSizeChanged: func() {
+								if mw_clean.progressBar.Value() == len(files)-1 {
+									mw_clean.Close()
+								}
+							},
+						},
+						Label{AssignTo: &mw_clean.schedule},
+					},
+				},
+			},
+		}.Create()
+		mw_clean.Show()
+		go func() {
+			err := clearOutputDir(mw_clean, len(files))
+			if err != nil {
+				LOG.Printf("Error clearing output directory %s: %v\n", outputDir, err)
+				walk.MsgBox(mw, "提示", "Error clearing output directory", walk.MsgBoxIconWarning)
+			}
+			mw_clean.Close()
+		}()
+		mw_clean.Run()
 	}
 
 	//清空transfer
 	transfer = make(map[string]transferValue)
 	LOG.Println("清空transfer")
-	//TODO:改界面
-	walk.MsgBox(mw, "提示", "解析过程可能耗时较长，请耐心等待", walk.MsgBoxIconInformation)
 
-	_prase(parseDir)
+	files_num, err := countFiles()
+	if err != nil {
+		LOG.Printf("count files err: %v\n", err)
+	}
+	LOG.Printf("带解析的文件数量， 文件数量：%d\n", files_num)
+
+	startTime := time.Now()
+	mw_prase := new(ProcessMW)
+	MainWindow{
+		AssignTo: &mw_prase.MainWindow,
+		Title:    "正在预处理待搜索的文件，请耐心等待",
+		Size:     Size{500, 200},
+		Layout:   VBox{},
+		Children: []Widget{
+			Composite{
+				Layout: Grid{Columns: 1},
+				Children: []Widget{
+					Label{
+						Text:      fmt.Sprintf("正在向 %s 写入预处理后的文件", outputDir),
+						Alignment: AlignHNearVNear,
+						MinSize:   Size{50, 10},
+					},
+				},
+			},
+			Composite{
+				Layout: Grid{Columns: 2},
+				Children: []Widget{
+					ProgressBar{
+						AssignTo: &mw_prase.progressBar,
+						MinValue: 0,
+						MaxValue: files_num,
+						OnSizeChanged: func() {
+							if mw_prase.progressBar.Value() == files_num-1 {
+								mw_prase.Close()
+								walk.MsgBox(mw, "提示", fmt.Sprintf("预处理解析完成, 总耗时: %s", time.Since(startTime)), walk.MsgBoxIconInformation)
+							}
+						},
+					},
+					Label{AssignTo: &mw_prase.schedule},
+				},
+			},
+		},
+	}.Create()
+	mw_prase.Show()
+	go _prase(mw_prase, files_num)
+	mw_prase.Run()
+
 	if err := reloadTransferToFile(); err != nil {
 		LOG.Printf("Error reloading transfer to file: %v\n", err)
 	}
-	walk.MsgBox(mw, "提示", "预处理解析完成", walk.MsgBoxIconInformation)
+}
+
+type ProcessMW struct {
+	*walk.MainWindow
+	schedule    *walk.Label
+	progressBar *walk.ProgressBar
 }
 
 type MySubWindow struct {
@@ -429,6 +518,7 @@ type MyMainWindow struct {
 	typeLabel  *walk.Label
 	numLabel   *walk.Label
 	errLable   *walk.Label
+	timeLable  *walk.Label
 
 	reload    *walk.CheckBox
 	is_reload bool
@@ -438,9 +528,11 @@ type MyMainWindow struct {
 
 func (this *MyMainWindow) search(result_table *ResultInfoModel, errs_table *ErrInfoModel) {
 	//TODO:处理不合法路径
-	result := _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode)
+	startTime := time.Now()
+	result := _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode, this)
 	this.numLabel.SetText("查询结果数量：" + strconv.Itoa(len(result.CallChain)))
 	this.errLable.SetText("报错数量： " + strconv.Itoa(len(result.Errs)))
+	this.timeLable.SetText("搜索总耗时" + time.Since(startTime).String())
 	LOG.Printf("search complete, results nums: %d, err nums: %d", len(result.CallChain), len(result.Errs))
 
 	result_table.UpdateItems(result.CallChain, result.TargetRowNums)
@@ -535,4 +627,27 @@ func extractLastBracketContent(line string) string {
 		LOG.Println("no brackets found")
 	}
 	return matches[len(matches)-1]
+}
+
+func countFiles() (int, error) {
+	var count int
+	dirs := strings.Split(parseDir, ",")
+	for _, dir := range dirs {
+		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() && strings.HasPrefix(info.Name(), ".") {
+				return filepath.SkipDir // 跳过整个目录
+			}
+			if !info.IsDir() {
+				count++
+			}
+			return nil
+		})
+		if err != nil {
+			return count, err
+		}
+	}
+	return count, nil
 }

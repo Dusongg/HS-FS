@@ -17,9 +17,6 @@ type transferValue struct {
 	OriginPath   string
 }
 
-//TODO:提示解析警告
-//TODO:自定义选择解析完后的文件路径，生成文件保存这个设定
-
 const ROOT_DIR string = "D:\\HS-FS"
 const SAVE_outputDir string = "outputdir.txt"
 const SAVE_parseDir string = "parse.txt"
@@ -44,10 +41,10 @@ func init() {
 
 }
 
-func _prase(path string) {
+func _prase(mw_parse *ProcessMW, total int) {
 	serial_num := 0
 	//bug处理：文件路径不合法情况
-	dirs := strings.Split(path, ",") //bug:路径名带有,
+	dirs := strings.Split(parseDir, ",") //bug:路径名带有,
 	for _, dir := range dirs {
 		LOG.Println(dir)
 	}
@@ -96,6 +93,10 @@ func _prase(path string) {
 					SerialNumber: serial_num,
 					OriginPath:   path,
 				}
+				mw_parse.Synchronize(func() {
+					mw_parse.progressBar.SetValue(serial_num)
+					mw_parse.schedule.SetText(fmt.Sprintf("%.2f%%", float64(serial_num)/float64(total)*100))
+				})
 				serial_num++
 
 				err = os.WriteFile(outputPath, []byte(codeContent), 0644)
@@ -122,27 +123,32 @@ type Hsdoc struct {
 	Code    string   `xml:"code"`
 }
 
-func clearOutputDir() error {
+func clearOutputDir(mw_clean *ProcessMW, total int) error {
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 		return nil
 	}
 	files, err := os.ReadDir(outputDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read output directory: %v", err)
 	}
-	for _, file := range files {
+	for i, file := range files {
 		err = os.RemoveAll(filepath.Join(outputDir, file.Name()))
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to remove file %v: %v", file.Name(), err)
 		}
+		LOG.Printf("remove file %d\n", i)
+		mw_clean.Synchronize(func() {
+			mw_clean.progressBar.SetValue(i)
+			mw_clean.schedule.SetText(fmt.Sprintf("%.2f%%", float64(i+1)/float64(total)*100))
+		})
 	}
 	err = os.RemoveAll(outputDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to remove output directory: %v", err)
 	}
 	err = os.Mkdir(outputDir, 0755)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create output directory: %v", err)
 	}
 	return nil
 }

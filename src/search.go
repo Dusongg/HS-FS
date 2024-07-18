@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/lxn/walk"
 	"log"
 	"os"
 	"path/filepath"
@@ -16,11 +17,12 @@ type SearchResultInfo struct {
 	Errs          []string
 }
 
-func _search(file_or_directory string, target string, mode string) *SearchResultInfo {
+func _search(file_or_directory string, target string, mode string, mw *MyMainWindow) *SearchResultInfo {
 	bitmap := NewBitmap(100)
 	path, err := os.Stat(file_or_directory)
 	if err != nil {
-		log.Println(err)
+		walk.MsgBox(mw, "警告", err.Error(), walk.MsgBoxIconError)
+		return nil
 	}
 	if path.IsDir() {
 		return directory_dfs(file_or_directory, target, mode, bitmap)
