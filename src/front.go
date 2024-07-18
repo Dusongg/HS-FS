@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
@@ -11,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,8 +22,11 @@ const (
 	REGEX_MATCH = "REGEX_MATCH"
 )
 
-var LOG = log.New(os.Stdout, "INFO: ", log.LstdFlags|log.Lshortfile)
+const SAVE_pre_searchPath string = "pre_search.txt"
 
+var pre_targets []string
+var wmutex sync.Mutex
+var LOG = log.New(os.Stdout, "INFO: ", log.LstdFlags|log.Lshortfile)
 var transfer = make(map[string]transferValue)
 
 func init() {
@@ -32,6 +37,7 @@ func init() {
 	}
 	LOG.Printf("transfer size :%d", len(transfer))
 
+	CreateOrLoadPreTarget()
 }
 
 func main() {
@@ -58,7 +64,12 @@ func main() {
 		OnDropFiles: func(files []string) {
 			mw.file_or_directory.SetText(strings.Join(files, "\r\n"))
 		},
+		OnSizeChanged: func() {
+			pre_targets = pre_targets[:5]
+			mw.target.SetModel(pre_targets)
+		},
 		Children: []Widget{
+			//第一行：搜索路径
 			Composite{
 				Layout: Grid{Columns: 3},
 				Children: []Widget{
@@ -77,11 +88,32 @@ func main() {
 					},
 				},
 			},
+			//第二行：关键词
 			Composite{
 				Layout: Grid{Columns: 10},
 				Children: []Widget{
 					Label{Text: "查找目标: "},
-					LineEdit{AssignTo: &mw.target},
+					//LineEdit{AssignTo: &mw.target}, //TODO:下拉查看最近五次的搜索目标
+					ComboBox{
+						Editable: true,
+						AssignTo: &mw.target,
+						Model:    pre_targets, //TODO:每次搜索保存，最多五次，注意打开文件不要清空
+						OnEditingFinished: func() {
+							new_target := mw.target.Text()
+							LOG.Println("新增一条搜索记录: " + new_target)
+							pre_targets = append([]string{new_target}, pre_targets...)
+							if len(pre_targets) > 5 {
+								pre_targets = pre_targets[:5]
+							}
+							LOG.Println("当前pre_targets:", pre_targets)
+							mw.target.SetModel(pre_targets)
+							mw.target.SetText(new_target)
+							go func() {
+								saveHistoryTarget(new_target)
+							}()
+						},
+					},
+
 					Label{Text: "匹配模式: "},
 					RadioButtonGroup{
 						Buttons: []RadioButton{
@@ -102,7 +134,7 @@ func main() {
 					},
 				},
 			},
-
+			//结果表
 			TableView{
 				AssignTo: &mw.res_view,
 				Model:    results_table,
@@ -136,7 +168,7 @@ func main() {
 					},
 				},
 			},
-
+			//错误表
 			TableView{
 				AssignTo:         &mw.err_view,
 				Model:            errs_table,
@@ -151,7 +183,7 @@ func main() {
 					},
 				},
 			},
-
+			//最后一行
 			Composite{
 				Layout: HBox{},
 				Children: []Widget{
@@ -169,7 +201,7 @@ func main() {
 					},
 
 					PushButton{AssignTo: &mw.run, Text: "Run"},
-					PushButton{AssignTo: &mw.set, Text: "Set"},
+					PushButton{AssignTo: &mw.set, Text: "Setup"},
 					PushButton{
 						Text:     "Quit",
 						AssignTo: &mw.quit,
@@ -234,7 +266,7 @@ func main() {
 	mw.quit.Clicked().Attach(func() {
 		path := filepath.Join(ROOT_DIR, SAVE_pre_searchPath)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			CreateAndLoadOutputDir()
+			CreateOrLoadOutputDir()
 		}
 		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		defer file.Close()
@@ -267,7 +299,7 @@ func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
 				Children: []Widget{
 					Label{Text: "预处理的文件夹(搜索范围)"},
 					LineEdit{
-						//TODO:下拉查看
+						//TODO:下拉查看：将parseDIr以逗号分割开之后下来展示
 						Text:     parseDir,
 						AssignTo: &replace_subwd.parse_path,
 						MaxSize:  Size{Width: 450, Height: 20},
@@ -287,9 +319,9 @@ func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
 			Composite{
 				Layout: Grid{Columns: 10},
 				Children: []Widget{
-					Label{Text: "更改输出文件路径: "},
+					Label{Text: "更改输出文件路径, 当前路径:  "},
 					LineEdit{
-						Text:     "当前路径: " + outputDir,
+						Text:     outputDir,
 						AssignTo: &replace_subwd.output_path,
 						MaxSize:  Size{Width: 450, Height: 20},
 					},
@@ -312,7 +344,7 @@ func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
 					PushButton{
 						Text: "退出",
 						OnClicked: func() {
-							if parseDir != replace_subwd.parse_path.Text() {
+							if parseDir != replace_subwd.parse_path.Text() { //表示没有点save
 								save_parse_path(replace_subwd, mw)
 							}
 							replace_subwd.Accept()
@@ -329,7 +361,7 @@ func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
 	replace_subwd.output_path_save.Clicked().Attach(func() {
 		path := filepath.Join(ROOT_DIR, SAVE_outputDir)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			CreateAndLoadOutputDir()
+			CreateOrLoadOutputDir()
 		}
 		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		defer file.Close()
@@ -355,7 +387,7 @@ func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
 func save_parse_path(subwd *MySubWindow, mw *MyMainWindow) {
 	path := filepath.Join(ROOT_DIR, SAVE_parseDir)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		CreateAndLoadParseDir()
+		CreateOrLoadParseDir()
 	}
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer file.Close()
@@ -508,7 +540,7 @@ type MyMainWindow struct {
 
 	file_or_directory *walk.LineEdit
 	set               *walk.PushButton
-	target            *walk.LineEdit
+	target            *walk.ComboBox
 
 	out_num  *walk.LineEdit
 	res_view *walk.TableView
@@ -650,4 +682,48 @@ func countFiles() (int, error) {
 		}
 	}
 	return count, nil
+}
+
+func saveHistoryTarget(new_target string) {
+	wmutex.Lock()
+	defer wmutex.Unlock()
+	history_path := filepath.Join(ROOT_DIR, SAVE_pre_target)
+	file, err := os.OpenFile(history_path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		LOG.Println("无法打开文件:", err)
+		return
+	}
+	defer file.Close()
+
+	// 读取文件内容
+	scanner := bufio.NewScanner(file)
+	var lines []string
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("读取文件出错:", err)
+		return
+	}
+
+	// 在文件的第一行插入新内容
+	lines = append([]string{new_target}, lines...)
+
+	// 如果文件行数超过二十行，保留前二十行
+	if len(lines) > 20 {
+		lines = lines[:10]
+	}
+
+	// 将更新后的内容写回文件
+	file.Truncate(0)                // 清空文件内容
+	file.Seek(0, 0)                 // 定位到文件开头
+	writer := bufio.NewWriter(file) // 创建写入器
+	for _, line := range lines {
+		_, err := writer.WriteString(line + "\n")
+		if err != nil {
+			fmt.Println("写入文件出错:", err)
+			return
+		}
+	}
+	writer.Flush() // 刷新缓冲区，确保数据写入文件
 }

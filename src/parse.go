@@ -20,7 +20,7 @@ type transferValue struct {
 const ROOT_DIR string = "D:\\HS-FS"
 const SAVE_outputDir string = "outputdir.txt"
 const SAVE_parseDir string = "parse.txt"
-const SAVE_pre_searchPath string = "pre_search.txt"
+const SAVE_pre_target string = "pre_target.txt"
 const transferFile string = "D:\\HS-FS\\transfer.json"
 
 var preSearchPath string
@@ -35,9 +35,9 @@ func init() {
 			LOG.Printf("failed to create output directory: %v", err)
 		}
 	}
-	CreateAndLoadOutputDir()
-	CreateAndLoadParseDir()
-	CreateAndLoadPreSearchDir()
+	CreateOrLoadOutputDir()
+	CreateOrLoadParseDir()
+	CreateOrLoadPreSearchDir()
 
 }
 
@@ -194,7 +194,7 @@ func loadTransferFromFile() error {
 	return nil
 }
 
-func CreateAndLoadOutputDir() {
+func CreateOrLoadOutputDir() {
 	where_output := filepath.Join(ROOT_DIR, SAVE_outputDir)
 	if _, err := os.Stat(where_output); os.IsNotExist(err) {
 		file, err := os.Create(where_output)
@@ -205,11 +205,17 @@ func CreateAndLoadOutputDir() {
 		file.WriteString("D:\\HS-FS\\output")
 	}
 
-	file, err := os.Open(filepath.Join(ROOT_DIR, SAVE_outputDir))
+	file, err := os.OpenFile(filepath.Join(ROOT_DIR, SAVE_outputDir), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		LOG.Printf("failed to open file: %v", err)
 	}
+
 	defer file.Close()
+
+	if scanner := bufio.NewScanner(file); !scanner.Scan() {
+		file.WriteString("D:\\HS-FS\\output")
+	}
+	file.Seek(0, 0)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		outputDir = scanner.Text()
@@ -218,7 +224,7 @@ func CreateAndLoadOutputDir() {
 
 }
 
-func CreateAndLoadParseDir() {
+func CreateOrLoadParseDir() {
 	where_prase := filepath.Join(ROOT_DIR, SAVE_parseDir)
 	if _, err := os.Stat(where_prase); os.IsNotExist(err) {
 		file, err := os.Create(where_prase)
@@ -241,7 +247,7 @@ func CreateAndLoadParseDir() {
 
 }
 
-func CreateAndLoadPreSearchDir() {
+func CreateOrLoadPreSearchDir() {
 	where_presearch := filepath.Join(ROOT_DIR, SAVE_pre_searchPath)
 	if _, err := os.Stat(where_presearch); os.IsNotExist(err) {
 		file, err := os.Create(where_presearch)
@@ -258,6 +264,27 @@ func CreateAndLoadPreSearchDir() {
 	scanner := bufio.NewScanner(pre_search_file)
 	for scanner.Scan() {
 		preSearchPath = scanner.Text()
+	}
+	LOG.Println("previous search path:", preSearchPath)
+}
+
+func CreateOrLoadPreTarget() {
+	where_pretarget := filepath.Join(ROOT_DIR, SAVE_pre_target)
+	if _, err := os.Stat(where_pretarget); os.IsNotExist(err) {
+		file, err := os.Create(where_pretarget)
+		if err != nil {
+			LOG.Printf("failed to create pre_search_path file: %v", err)
+		}
+		defer file.Close()
+	}
+	pre_target_file, err := os.Open(filepath.Join(ROOT_DIR, SAVE_pre_target))
+	if err != nil {
+		LOG.Printf("failed to open file: %v", err)
+	}
+	defer pre_target_file.Close()
+	scanner := bufio.NewScanner(pre_target_file)
+	for scanner.Scan() {
+		pre_targets = append(pre_targets, scanner.Text())
 	}
 	LOG.Println("previous search path:", preSearchPath)
 }
