@@ -5,7 +5,6 @@
 package main
 
 import (
-	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -47,7 +46,7 @@ func (d *Directory) ChildCount() int {
 		// It seems this is the first time our child count is checked, so we
 		// use the opportunity to populate our direct children.
 		if err := d.ResetChildren(); err != nil {
-			log.Print(err)
+			LOG.Print(err)
 		}
 	}
 
@@ -226,7 +225,7 @@ func browser(wd interface{}) {
 
 	treeModel, err := NewDirectoryTreeModel()
 	if err != nil {
-		log.Fatal(err)
+		LOG.Fatal(err)
 	}
 	tableModel := NewFileInfoModel()
 
@@ -248,7 +247,21 @@ func browser(wd interface{}) {
 					PushButton{
 						Text: "OK",
 						OnClicked: func() {
-							mainWindow.Close()
+							switch wd.(type) {
+							case *MyMainWindow:
+								err := wd.(*MyMainWindow).file_or_directory.SetText(text_path.Text())
+								if err != nil {
+									walk.MsgBox(mainWindow, "提示", "路径输入错误", walk.MsgBoxIconWarning)
+								}
+								mainWindow.Close()
+							case *MySubWindow:
+								err := wd.(*MySubWindow).parse_path.SetText(text_path.Text())
+								if err != nil {
+									walk.MsgBox(mainWindow, "提示", "路径输入错误", walk.MsgBoxIconWarning)
+								}
+								mainWindow.Close()
+							}
+
 						},
 					},
 				},
@@ -302,26 +315,13 @@ func browser(wd interface{}) {
 								switch wd.(type) {
 								//查询:单个路径
 								case *MyMainWindow:
-									err := wd.(*MyMainWindow).file_or_directory.SetText(path)
 									text_path.SetText(path)
-									if err != nil {
-										walk.MsgBox(mainWindow, "提示", "路径输入错误", walk.MsgBoxIconWarning)
-									}
 								//解析：可能多条路径
 								case *MySubWindow:
-									input_path := wd.(*MySubWindow).prase_path
-									if input_path.Text() == "" {
-										err := input_path.SetText(path)
+									if text_path.Text() == "" {
 										text_path.SetText(path)
-										if err != nil {
-											walk.MsgBox(mainWindow, "提示", "路径输入错误", walk.MsgBoxIconWarning)
-										}
 									} else {
-										err := input_path.SetText(input_path.Text() + "," + path)
 										text_path.SetText(text_path.Text() + "," + path)
-										if err != nil {
-											walk.MsgBox(mainWindow, "提示", "路径输入错误", walk.MsgBoxIconWarning)
-										}
 									}
 								}
 							}
@@ -332,7 +332,7 @@ func browser(wd interface{}) {
 			},
 		},
 	}.Create()); err != nil {
-		log.Fatal(err)
+		LOG.Fatal(err)
 	}
 
 	splitter.SetFixed(treeView, true)
