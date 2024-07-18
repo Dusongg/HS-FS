@@ -247,15 +247,25 @@ func main() {
 			return
 		}
 
+		if outputDir == "" {
+			walk.MsgBox(mw, "提示", "output文件路径错误，请重新设置（默认：D:\\HS-FS\\output）", walk.MsgBoxIconWarning)
+			runsubwd(replace_subwd, mw)
+
+		}
+
 		if parseDir == "" {
-			walk.MsgBox(mw, "提示", "请先设置解析路径", walk.MsgBoxIconWarning)
+			walk.MsgBox(mw, "提示", "请先设置待解析文件的路径", walk.MsgBoxIconWarning)
 			runsubwd(replace_subwd, mw)
 		} else if files, _ := os.ReadDir(outputDir); len(files) == 0 {
 			walk.MsgBox(mw, "提示", "output文件夹为空，正在为您自动解析", walk.MsgBoxIconWarning)
-			parse(mw, false) //bug：subwd窗口没有打开，提示信息需要在wm
+			parse(mw, false)
 		} else if mw.is_reload {
 			parse(mw, true)
+		} else if len(transfer) == 0 {
+			walk.MsgBox(mw, "提示", "依赖文件被意外删除，需要重新加载", walk.MsgBoxIconWarning)
+			parse(mw, true)
 		}
+
 		mw.search(results_table, errs_table)
 	})
 
@@ -359,23 +369,7 @@ func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
 	}
 
 	replace_subwd.output_path_save.Clicked().Attach(func() {
-		path := filepath.Join(ROOT_DIR, SAVE_outputDir)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			CreateOrLoadOutputDir()
-		}
-		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-		defer file.Close()
-		if err != nil {
-			walk.MsgBox(mw, "提示", fmt.Sprintf("无法打开文件:%s , 更新失败", path), walk.MsgBoxIconWarning)
-			return
-		}
-		LOG.Printf("更改路径：%s\n", replace_subwd.output_path.Text())
-		_, err = file.WriteString(replace_subwd.output_path.Text())
-		if err != nil {
-			LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, replace_subwd.output_path.Text(), err)
-			return
-		}
-		outputDir = replace_subwd.output_path.Text()
+		save_output_path(replace_subwd, mw)
 	})
 	replace_subwd.parse_path_save.Clicked().Attach(func() {
 		save_parse_path(replace_subwd, mw)
@@ -695,7 +689,6 @@ func saveHistoryTarget(new_target string) {
 	}
 	defer file.Close()
 
-	// 读取文件内容
 	scanner := bufio.NewScanner(file)
 	var lines []string
 	for scanner.Scan() {
@@ -705,19 +698,14 @@ func saveHistoryTarget(new_target string) {
 		fmt.Println("读取文件出错:", err)
 		return
 	}
-
-	// 在文件的第一行插入新内容
 	lines = append([]string{new_target}, lines...)
 
-	// 如果文件行数超过二十行，保留前二十行
 	if len(lines) > 20 {
 		lines = lines[:10]
 	}
-
-	// 将更新后的内容写回文件
-	file.Truncate(0)                // 清空文件内容
-	file.Seek(0, 0)                 // 定位到文件开头
-	writer := bufio.NewWriter(file) // 创建写入器
+	file.Truncate(0)
+	file.Seek(0, 0)
+	writer := bufio.NewWriter(file)
 	for _, line := range lines {
 		_, err := writer.WriteString(line + "\n")
 		if err != nil {
@@ -725,5 +713,26 @@ func saveHistoryTarget(new_target string) {
 			return
 		}
 	}
-	writer.Flush() // 刷新缓冲区，确保数据写入文件
+	writer.Flush()
+}
+
+func save_output_path(replace_subwd *MySubWindow, mw *MyMainWindow) {
+	path := filepath.Join(ROOT_DIR, SAVE_outputDir)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		CreateOrLoadOutputDir()
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	defer file.Close()
+	if err != nil {
+		walk.MsgBox(mw, "提示", fmt.Sprintf("无法打开文件:%s , 更新失败", path), walk.MsgBoxIconWarning)
+		return
+	}
+	LOG.Printf("更改路径：%s\n", replace_subwd.output_path.Text())
+	_, err = file.WriteString(replace_subwd.output_path.Text())
+	if err != nil {
+		LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, replace_subwd.output_path.Text(), err)
+		return
+	}
+	outputDir = replace_subwd.output_path.Text()
+	LOG.Println("outputDir changed --> " + outputDir)
 }
