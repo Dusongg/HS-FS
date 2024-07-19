@@ -221,6 +221,7 @@ func main() {
 	})
 
 	mw.run.Clicked().Attach(func() {
+		log.Println("run")
 		switch {
 		case mw.searchScope.Text() == "":
 			walk.MsgBox(mw, "提示", "请输入目标所在文件或目录", walk.MsgBoxIconWarning)
@@ -252,8 +253,8 @@ func main() {
 			parse(mw, true)
 		}
 
-		savePreSearchpath(mw)
-
+		savePreSearchPath(mw)
+		LOG.Println("start to search")
 		mw.search(resultsTable, errsTable)
 	})
 
@@ -318,7 +319,7 @@ func runSettingWd(settingWd *MySubWindow, mw *MyMainWindow) {
 					PushButton{
 						Text: "生成文件",
 						OnClicked: func() {
-							parse(mw, false)
+							parse(mw, true)
 							settingWd.Accept()
 						},
 					},
@@ -438,7 +439,7 @@ func parse(mw *MyMainWindow, Reload bool) {
 	parseWd := new(ProcessWd)
 	err = MainWindow{
 		AssignTo: &parseWd.MainWindow,
-		Title:    "正在预处理待搜索的文件，请耐心等待",
+		Title:    "正在解析所有的文件，请耐心等待",
 		Size:     Size{Width: 500, Height: 200},
 		Layout:   VBox{},
 		Children: []Widget{
@@ -710,7 +711,7 @@ func saveOutputPath(settingWd *MySubWindow, mw *MyMainWindow) {
 	LOG.Println("outputDir changed --> " + outputDir)
 }
 
-func savePreSearchpath(mw *MyMainWindow) {
+func savePreSearchPath(mw *MyMainWindow) {
 	//preSearch_mutex.Lock()
 	//defer preSearch_mutex.Unlock()
 	path := filepath.Join(ROOT_DIR, PRE_SEARCHPATH_DOC)

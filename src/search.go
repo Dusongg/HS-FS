@@ -34,7 +34,7 @@ func Search_(searchScope string, target string, mode int, mw *MyMainWindow) *Sea
 func directoryDFS(directory string, target string, mode int, bmp *Bitmap) *SearchResultInfo {
 	result := &SearchResultInfo{}
 	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
-		//log.Println("start at: " + path)
+		//LOG.Println("start at: " + path)
 		if err != nil {
 			return err
 		}
