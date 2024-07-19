@@ -143,42 +143,7 @@ func main() {
 				OnCurrentIndexChanged: func() {
 					if index := mw.resView.CurrentIndex(); index > -1 {
 						targetFile := extractLastBracketContent(resultsTable.results[index].callChain) //拿掉调用链的最后一个函数(带有[])
-
-						var openFileWD *walk.Dialog
-						if err := (Dialog{
-							AssignTo: &openFileWD,
-							MinSize:  Size{Width: 700, Height: 200},
-							Layout:   VBox{},
-							Children: []Widget{
-								PushButton{
-									Text: "打开解析前的文件",
-									OnClicked: func() {
-										LOG.Printf("open : %s", targetFile)
-										if transferValue, exists := transfer[targetFile]; exists {
-											cmd := exec.Command("cmd", "/c", "start", "", transferValue.OriginPath)
-											if err := cmd.Run(); err != nil {
-												walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
-											}
-										} else {
-											walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", resultsTable.results[index]), walk.MsgBoxIconError)
-										}
-									},
-								},
-								PushButton{
-									Text: "打开解析后的文件",
-									OnClicked: func() {
-										path := filepath.Join(outputDir, targetFile[1:len(targetFile)-1]+".code.txt")
-										cmd := exec.Command("cmd", "/c", "start", "", path)
-										if err := cmd.Run(); err != nil {
-											walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
-										}
-									},
-								},
-							},
-						}.Create(mw)); err != nil {
-							return
-						}
-						openFileWD.Run()
+						OpenFile(mw, targetFile)
 					}
 				},
 				Columns: []TableViewColumn{
@@ -417,7 +382,7 @@ func parse(mw *MyMainWindow, Reload bool) {
 		MainWindow{
 			AssignTo: &cleanWd.MainWindow,
 			Title:    "正在清除output文件夹",
-			Size:     Size{500, 200},
+			Size:     Size{Width: 500, Height: 200},
 			Layout:   VBox{},
 			Children: []Widget{
 				Composite{
@@ -686,7 +651,7 @@ func countFiles() (int, error) {
 	return count, nil
 }
 
-func saveHistoryTarget(new_target string) {
+func saveHistoryTarget(newTarget string) {
 	historyMutex.Lock()
 	defer historyMutex.Unlock()
 	historyTargetFilePath := filepath.Join(ROOT_DIR, PRE_TARGET_DOC)
@@ -706,7 +671,7 @@ func saveHistoryTarget(new_target string) {
 		fmt.Println("读取文件出错:", err)
 		return
 	}
-	lines = append([]string{new_target}, lines...)
+	lines = append([]string{newTarget}, lines...)
 
 	if len(lines) > 20 {
 		lines = lines[:10]
@@ -778,4 +743,62 @@ func IsValidPath(searchPath string) bool {
 		return false
 	}
 	return true
+}
+
+func OpenFile(mw *MyMainWindow, targetFile string) {
+	var openFileWD *walk.Dialog
+	if err := (Dialog{
+		Title:    "请选择打开解析前的文件或者解析后的文件",
+		AssignTo: &openFileWD,
+		Layout:   VBox{},
+		Children: []Widget{
+			Composite{
+				Layout: Grid{Columns: 2},
+				Children: []Widget{
+					Label{
+						Text:    fmt.Sprintf("Before parse: %s", transfer[targetFile].OriginPath),
+						MinSize: Size{Width: 750},
+					},
+					PushButton{
+						Text:    "Open",
+						MinSize: Size{Width: 50},
+						OnClicked: func() {
+							LOG.Printf("open : %s", targetFile)
+							if transferValue, exists := transfer[targetFile]; exists {
+								cmd := exec.Command("cmd", "/c", "start", "", transferValue.OriginPath)
+								if err := cmd.Run(); err != nil {
+									walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
+								}
+							} else {
+								walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", targetFile), walk.MsgBoxIconError)
+							}
+						},
+					},
+				},
+			},
+			Composite{
+				Layout: Grid{Columns: 2},
+				Children: []Widget{
+					Label{
+						MinSize: Size{Width: 750},
+						Text:    fmt.Sprintf("After parse: %s.code.txt", filepath.Join(outputDir, targetFile[1:len(targetFile)-1])),
+					},
+					PushButton{
+						Text:    "Open",
+						MinSize: Size{Width: 50},
+						OnClicked: func() {
+							path := filepath.Join(outputDir, targetFile[1:len(targetFile)-1]+".code.txt")
+							cmd := exec.Command("cmd", "/c", "start", "", path)
+							if err := cmd.Run(); err != nil {
+								walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
+							}
+						},
+					},
+				},
+			},
+		},
+	}.Create(mw)); err != nil {
+		return
+	}
+	openFileWD.Run()
 }

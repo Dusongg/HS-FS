@@ -40,7 +40,7 @@ func init() {
 
 }
 
-func Parse_(mw_parse *ProcessWd, total int) {
+func Parse_(parseWd *ProcessWd, total int) {
 	serialNum := 0
 	//bug处理：文件路径不合法情况
 	dirs := strings.Split(parseDir, ",") //bug:路径名带有,
@@ -83,18 +83,18 @@ func Parse_(mw_parse *ProcessWd, total int) {
 						return fmt.Errorf("failed to create output directory: %v", err)
 					}
 				}
-				base_without_ext := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-				outputFileName := base_without_ext + ".code.txt"
+				baseWithoutExt := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+				outputFileName := baseWithoutExt + ".code.txt"
 
 				outputPath := filepath.Join(outputDir, outputFileName)
 
-				transfer[fmt.Sprintf("[%s]", base_without_ext)] = transferValue{
+				transfer[fmt.Sprintf("[%s]", baseWithoutExt)] = transferValue{
 					SerialNumber: serialNum,
 					OriginPath:   path,
 				}
-				mw_parse.Synchronize(func() {
-					mw_parse.progressBar.SetValue(serialNum)
-					mw_parse.schedule.SetText(fmt.Sprintf("%.2f%%", float64(serialNum)/float64(total)*100))
+				parseWd.Synchronize(func() {
+					parseWd.progressBar.SetValue(serialNum)
+					parseWd.schedule.SetText(fmt.Sprintf("%.2f%%", float64(serialNum)/float64(total)*100))
 				})
 				serialNum++
 
@@ -122,7 +122,7 @@ type Hsdoc struct {
 	Code    string   `xml:"code"`
 }
 
-func clearOutputDir(mw_clean *ProcessWd, total int) error {
+func clearOutputDir(cleanWd *ProcessWd, total int) error {
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 		return nil
 	}
@@ -136,9 +136,9 @@ func clearOutputDir(mw_clean *ProcessWd, total int) error {
 			return fmt.Errorf("failed to remove file %v: %v", file.Name(), err)
 		}
 		LOG.Printf("remove file %d\n", i)
-		mw_clean.Synchronize(func() {
-			mw_clean.progressBar.SetValue(i)
-			mw_clean.schedule.SetText(fmt.Sprintf("%.2f%%", float64(i+1)/float64(total)*100))
+		cleanWd.Synchronize(func() {
+			cleanWd.progressBar.SetValue(i)
+			cleanWd.schedule.SetText(fmt.Sprintf("%.2f%%", float64(i+1)/float64(total)*100))
 		})
 	}
 	err = os.RemoveAll(outputDir)
@@ -170,11 +170,11 @@ func addEscapeBackslash(path string) string {
 }
 
 func reloadTransferToFile() error {
-	transfer_json, err := json.Marshal(transfer)
+	transferJson, err := json.Marshal(transfer)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(transferFile, transfer_json, 0644)
+	return os.WriteFile(transferFile, transferJson, 0644)
 }
 func loadTransferFromFile() error {
 	_, err := os.Open(transferFile)
