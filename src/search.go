@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 type SearchResultInfo struct {
@@ -25,10 +26,54 @@ func Search_(searchScope string, target string, mode int, mw *MyMainWindow) *Sea
 		return nil
 	}
 	if path.IsDir() {
-		return directoryDFS(searchScope, target, mode, bitmap)
+		return asyncDirectoryDFS(searchScope, target, mode, bitmap)
 	} else {
 		return fileDFS(searchScope, target, mode, bitmap)
 	}
+}
+
+func asyncDirectoryDFS(searchScope string, target string, mode int, bitmap *Bitmap) *SearchResultInfo {
+	subDirs, err := os.ReadDir(searchScope)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	results := make(chan *SearchResultInfo, len(subDirs))
+
+	for _, subDir := range subDirs {
+		if strings.HasPrefix(subDir.Name(), ".") {
+			continue
+		}
+		wg.Add(1)
+		if subDir.IsDir() {
+			go func(searchScope string, target string, mode int, bitmap *Bitmap) {
+				defer wg.Done()
+				result := directoryDFS(searchScope, target, mode, bitmap)
+				results <- result
+			}(filepath.Join(searchScope, subDir.Name()), target, mode, bitmap)
+		} else {
+			go func(searchScope string, target string, mode int, bitmap *Bitmap) {
+				defer wg.Done()
+				result := fileDFS(searchScope, target, mode, bitmap)
+				results <- result
+			}(filepath.Join(searchScope, subDir.Name()), target, mode, bitmap)
+		}
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+	finalResults := &SearchResultInfo{}
+	for result := range results {
+		if len(result.Errs) != 0 {
+			finalResults.Errs = append(finalResults.Errs, result.Errs...)
+		}
+		finalResults.CallChain = append(finalResults.CallChain, result.CallChain...)
+		finalResults.TargetRowNums = append(finalResults.TargetRowNums, result.TargetRowNums...)
+	}
+	return finalResults
 }
 
 func directoryDFS(directory string, target string, mode int, bmp *Bitmap) *SearchResultInfo {
@@ -146,6 +191,8 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 			result.CallChain = append(result.CallChain, fmt.Sprintf("%s::%s", funcName, foundString))
 		}
 		result.TargetRowNums = append(result.TargetRowNums, row)
+
+		//LOG.Println(result.CallChain)
 	}
 
 	for id, matchedFuncName := range matches {
