@@ -221,7 +221,7 @@ func browser(wd interface{}) {
 	var splitter *walk.Splitter
 	var treeView *walk.TreeView
 	var tableView *walk.TableView
-	var text_path *walk.TextEdit
+	var textPath *walk.TextEdit
 
 	treeModel, err := NewDirectoryTreeModel()
 	if err != nil {
@@ -232,15 +232,15 @@ func browser(wd interface{}) {
 	if err := (MainWindow{
 		AssignTo: &mainWindow,
 		Title:    "Walk File Browser Example",
-		MinSize:  Size{600, 400},
-		Size:     Size{1024, 640},
+		MinSize:  Size{Width: 600, Height: 400},
+		Size:     Size{Width: 1024, Height: 640},
 		Layout:   VBox{MarginsZero: true},
 		Children: []Widget{
 			Composite{
 				Layout: Grid{Columns: 2},
 				Children: []Widget{
 					TextEdit{
-						AssignTo: &text_path,
+						AssignTo: &textPath,
 						MinSize:  Size{Width: 900, Height: 2},
 						MaxSize:  Size{Width: 900, Height: 2},
 					},
@@ -249,13 +249,13 @@ func browser(wd interface{}) {
 						OnClicked: func() {
 							switch wd.(type) {
 							case *MyMainWindow:
-								err := wd.(*MyMainWindow).file_or_directory.SetText(text_path.Text())
+								err := wd.(*MyMainWindow).searchScope.SetText(textPath.Text())
 								if err != nil {
 									walk.MsgBox(mainWindow, "提示", "路径输入错误", walk.MsgBoxIconWarning)
 								}
 								mainWindow.Close()
 							case *MySubWindow:
-								err := wd.(*MySubWindow).parse_path.SetText(text_path.Text())
+								err := wd.(*MySubWindow).parsePathEdit.SetText(textPath.Text())
 								if err != nil {
 									walk.MsgBox(mainWindow, "提示", "路径输入错误", walk.MsgBoxIconWarning)
 								}
@@ -315,13 +315,13 @@ func browser(wd interface{}) {
 								switch wd.(type) {
 								//查询:单个路径
 								case *MyMainWindow:
-									text_path.SetText(path)
+									textPath.SetText(path)
 								//解析：可能多条路径
 								case *MySubWindow:
-									if text_path.Text() == "" {
-										text_path.SetText(path)
+									if textPath.Text() == "" {
+										textPath.SetText(path)
 									} else {
-										text_path.SetText(text_path.Text() + "," + path)
+										textPath.SetText(textPath.Text() + "," + path)
 									}
 								}
 							}

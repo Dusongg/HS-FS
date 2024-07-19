@@ -18,9 +18,9 @@ type transferValue struct {
 }
 
 const ROOT_DIR string = "D:\\HS-FS"
-const SAVE_outputDir string = "outputdir.txt"
-const SAVE_parseDir string = "parse.txt"
-const SAVE_pre_target string = "pre_target.txt"
+const OUTPUTDIR_DOC string = "outputdir.txt"
+const PARSEDIR_DOC string = "parse.txt"
+const PRE_TARGET_DOC string = "pre_target.txt"
 const transferFile string = "D:\\HS-FS\\transfer.json"
 
 var preSearchPath string
@@ -40,8 +40,8 @@ func init() {
 
 }
 
-func _prase(mw_parse *ProcessMW, total int) {
-	serial_num := 0
+func Parse_(mw_parse *ProcessWd, total int) {
+	serialNum := 0
 	//bug处理：文件路径不合法情况
 	dirs := strings.Split(parseDir, ",") //bug:路径名带有,
 	for _, dir := range dirs {
@@ -89,14 +89,14 @@ func _prase(mw_parse *ProcessMW, total int) {
 				outputPath := filepath.Join(outputDir, outputFileName)
 
 				transfer[fmt.Sprintf("[%s]", base_without_ext)] = transferValue{
-					SerialNumber: serial_num,
+					SerialNumber: serialNum,
 					OriginPath:   path,
 				}
 				mw_parse.Synchronize(func() {
-					mw_parse.progressBar.SetValue(serial_num)
-					mw_parse.schedule.SetText(fmt.Sprintf("%.2f%%", float64(serial_num)/float64(total)*100))
+					mw_parse.progressBar.SetValue(serialNum)
+					mw_parse.schedule.SetText(fmt.Sprintf("%.2f%%", float64(serialNum)/float64(total)*100))
 				})
-				serial_num++
+				serialNum++
 
 				err = os.WriteFile(outputPath, []byte(codeContent), 0644)
 				if err != nil {
@@ -122,7 +122,7 @@ type Hsdoc struct {
 	Code    string   `xml:"code"`
 }
 
-func clearOutputDir(mw_clean *ProcessMW, total int) error {
+func clearOutputDir(mw_clean *ProcessWd, total int) error {
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 		return nil
 	}
@@ -194,9 +194,9 @@ func loadTransferFromFile() error {
 }
 
 func CreateOrLoadOutputDir() {
-	where_output := filepath.Join(ROOT_DIR, SAVE_outputDir)
-	if _, err := os.Stat(where_output); os.IsNotExist(err) {
-		file, err := os.Create(where_output)
+	outputSavePath := filepath.Join(ROOT_DIR, OUTPUTDIR_DOC)
+	if _, err := os.Stat(outputSavePath); os.IsNotExist(err) {
+		file, err := os.Create(outputSavePath)
 		if err != nil {
 			LOG.Printf("failed to create output_path file: %v", err)
 		}
@@ -204,7 +204,7 @@ func CreateOrLoadOutputDir() {
 		file.WriteString("D:\\HS-FS\\output")
 	}
 
-	file, err := os.OpenFile(filepath.Join(ROOT_DIR, SAVE_outputDir), os.O_RDWR|os.O_CREATE, 0644)
+	file, err := os.OpenFile(filepath.Join(ROOT_DIR, OUTPUTDIR_DOC), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		LOG.Printf("failed to open file: %v", err)
 	}
@@ -225,21 +225,21 @@ func CreateOrLoadOutputDir() {
 }
 
 func CreateOrLoadParseDir() {
-	where_prase := filepath.Join(ROOT_DIR, SAVE_parseDir)
-	if _, err := os.Stat(where_prase); os.IsNotExist(err) {
-		file, err := os.Create(where_prase)
+	parseSavePath := filepath.Join(ROOT_DIR, PARSEDIR_DOC)
+	if _, err := os.Stat(parseSavePath); os.IsNotExist(err) {
+		file, err := os.Create(parseSavePath)
 		if err != nil {
 			LOG.Printf("failed to create parse_path file: %v", err)
 		}
 
 		defer file.Close()
 	}
-	parse_dir, err := os.Open(filepath.Join(ROOT_DIR, SAVE_parseDir))
+	file, err := os.Open(filepath.Join(ROOT_DIR, PARSEDIR_DOC))
 	if err != nil {
 		LOG.Printf("failed to open file: %v", err)
 	}
-	defer parse_dir.Close()
-	scanner := bufio.NewScanner(parse_dir)
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		parseDir = scanner.Text()
 	}
@@ -248,20 +248,20 @@ func CreateOrLoadParseDir() {
 }
 
 func CreateOrLoadPreSearchDir() {
-	where_presearch := filepath.Join(ROOT_DIR, SAVE_pre_searchPath)
-	if _, err := os.Stat(where_presearch); os.IsNotExist(err) {
-		file, err := os.Create(where_presearch)
+	presearchSavePath := filepath.Join(ROOT_DIR, PRE_SEARCHPATH_DOC)
+	if _, err := os.Stat(presearchSavePath); os.IsNotExist(err) {
+		file, err := os.Create(presearchSavePath)
 		if err != nil {
 			LOG.Printf("failed to create pre_search_path file: %v", err)
 		}
 		defer file.Close()
 	}
-	pre_search_file, err := os.Open(filepath.Join(ROOT_DIR, SAVE_pre_searchPath))
+	file, err := os.Open(filepath.Join(ROOT_DIR, PRE_SEARCHPATH_DOC))
 	if err != nil {
 		LOG.Printf("failed to open file: %v", err)
 	}
-	defer pre_search_file.Close()
-	scanner := bufio.NewScanner(pre_search_file)
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		preSearchPath = scanner.Text()
 	}
@@ -269,22 +269,22 @@ func CreateOrLoadPreSearchDir() {
 }
 
 func CreateOrLoadPreTarget() {
-	where_pretarget := filepath.Join(ROOT_DIR, SAVE_pre_target)
-	if _, err := os.Stat(where_pretarget); os.IsNotExist(err) {
-		file, err := os.Create(where_pretarget)
+	pretargetSavePath := filepath.Join(ROOT_DIR, PRE_TARGET_DOC)
+	if _, err := os.Stat(pretargetSavePath); os.IsNotExist(err) {
+		file, err := os.Create(pretargetSavePath)
 		if err != nil {
 			LOG.Printf("failed to create pre_search_path file: %v", err)
 		}
 		defer file.Close()
 	}
-	pre_target_file, err := os.Open(filepath.Join(ROOT_DIR, SAVE_pre_target))
+	file, err := os.Open(filepath.Join(ROOT_DIR, PRE_TARGET_DOC))
 	if err != nil {
 		LOG.Printf("failed to open file: %v", err)
 	}
-	defer pre_target_file.Close()
-	scanner := bufio.NewScanner(pre_target_file)
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		pre_targets = append(pre_targets, scanner.Text())
+		preTargets = append(preTargets, scanner.Text())
 	}
-	LOG.Println("previous targets:", pre_targets)
+	LOG.Println("previous targets:", preTargets)
 }

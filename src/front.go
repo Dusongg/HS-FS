@@ -22,10 +22,10 @@ const (
 	REGEX_MATCH = 2
 )
 
-const SAVE_pre_searchPath string = "pre_search.txt"
+const PRE_SEARCHPATH_DOC string = "pre_search.txt"
 
-var pre_targets []string
-var history_mutex sync.Mutex
+var preTargets []string
+var historyMutex sync.Mutex
 var LOG = log.New(os.Stdout, "INFO: ", log.LstdFlags|log.Lshortfile)
 var transfer = make(map[string]transferValue)
 
@@ -49,9 +49,9 @@ func main() {
 	})
 
 	mw := &MyMainWindow{}
-	replace_subwd := &MySubWindow{}
-	results_table := NewResultInfoModel()
-	errs_table := NewErrInfoModel()
+	settingWd := &MySubWindow{}
+	resultsTable := NewResultInfoModel()
+	errsTable := NewErrInfoModel()
 
 	if err := (MainWindow{
 		Title: "HS-FS",
@@ -62,13 +62,13 @@ func main() {
 			MarginsZero: true,
 		},
 		OnDropFiles: func(files []string) {
-			mw.file_or_directory.SetText(strings.Join(files, "\r\n"))
+			mw.searchScope.SetText(strings.Join(files, "\r\n"))
 		},
 		OnSizeChanged: func() {
-			if len(pre_targets) > 5 {
-				pre_targets = pre_targets[:5]
+			if len(preTargets) > 5 {
+				preTargets = preTargets[:5]
 			}
-			mw.target.SetModel(pre_targets)
+			mw.target.SetModel(preTargets)
 		},
 		Children: []Widget{
 			//第一行：搜索路径
@@ -80,7 +80,7 @@ func main() {
 					},
 					LineEdit{
 						Text:     preSearchPath,
-						AssignTo: &mw.file_or_directory,
+						AssignTo: &mw.searchScope,
 					},
 					PushButton{
 						Text: "Browser",
@@ -98,19 +98,19 @@ func main() {
 					ComboBox{
 						Editable: true,
 						AssignTo: &mw.target,
-						Model:    pre_targets,
+						Model:    preTargets,
 						OnEditingFinished: func() {
-							new_target := mw.target.Text()
-							LOG.Println("新增一条搜索记录: " + new_target)
-							pre_targets = append([]string{new_target}, pre_targets...)
-							if len(pre_targets) > 5 {
-								pre_targets = pre_targets[:5]
+							newTarget := mw.target.Text()
+							LOG.Println("新增一条搜索记录: " + newTarget)
+							preTargets = append([]string{newTarget}, preTargets...)
+							if len(preTargets) > 5 {
+								preTargets = preTargets[:5]
 							}
-							LOG.Println("当前pre_targets:", pre_targets)
-							mw.target.SetModel(pre_targets)
-							mw.target.SetText(new_target)
+							LOG.Println("当前preTargets:", preTargets)
+							mw.target.SetModel(preTargets)
+							mw.target.SetText(newTarget)
 							go func() {
-								saveHistoryTarget(new_target)
+								saveHistoryTarget(newTarget)
 							}()
 						},
 					},
@@ -121,12 +121,12 @@ func main() {
 							{
 								Name:     "exact_match",
 								Text:     "精确匹配",
-								AssignTo: &mw.type_exact_match,
+								AssignTo: &mw.exactMatchRB,
 							},
 							{
 								Name:     "regular_match",
 								Text:     "正则匹配",
-								AssignTo: &mw.type_regular_match,
+								AssignTo: &mw.regularMatchRB,
 							},
 						},
 					},
@@ -134,16 +134,15 @@ func main() {
 			},
 			//结果表
 			TableView{
-				AssignTo: &mw.res_view,
-				Model:    results_table,
+				AssignTo: &mw.resView,
+				Model:    resultsTable,
 				MinSize:  Size{Width: 500, Height: 350},
 
 				AlternatingRowBG: true,
 				ColumnsOrderable: true,
-				//TODO:选择打开解析前或者解析后的问题
 				OnCurrentIndexChanged: func() {
-					if index := mw.res_view.CurrentIndex(); index > -1 {
-						target_file := extractLastBracketContent(results_table.results[index].call_chain) //拿掉调用链的最后一个函数(带有[])
+					if index := mw.resView.CurrentIndex(); index > -1 {
+						targetFile := extractLastBracketContent(resultsTable.results[index].callChain) //拿掉调用链的最后一个函数(带有[])
 
 						var openFileWD *walk.Dialog
 						if err := (Dialog{
@@ -154,21 +153,21 @@ func main() {
 								PushButton{
 									Text: "打开解析前的文件",
 									OnClicked: func() {
-										LOG.Printf("open : %s", target_file)
-										if transfer_value, exists := transfer[target_file]; exists {
-											cmd := exec.Command("cmd", "/c", "start", "", transfer_value.OriginPath)
+										LOG.Printf("open : %s", targetFile)
+										if transferValue, exists := transfer[targetFile]; exists {
+											cmd := exec.Command("cmd", "/c", "start", "", transferValue.OriginPath)
 											if err := cmd.Run(); err != nil {
 												walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
 											}
 										} else {
-											walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", results_table.results[index]), walk.MsgBoxIconError)
+											walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", resultsTable.results[index]), walk.MsgBoxIconError)
 										}
 									},
 								},
 								PushButton{
 									Text: "打开解析后的文件",
 									OnClicked: func() {
-										path := filepath.Join(outputDir, target_file[1:len(target_file)-1]+".code.txt")
+										path := filepath.Join(outputDir, targetFile[1:len(targetFile)-1]+".code.txt")
 										cmd := exec.Command("cmd", "/c", "start", "", path)
 										if err := cmd.Run(); err != nil {
 											walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
@@ -195,8 +194,8 @@ func main() {
 			},
 			//错误表
 			TableView{
-				AssignTo:         &mw.err_view,
-				Model:            errs_table,
+				AssignTo:         &mw.errView,
+				Model:            errsTable,
 				AlternatingRowBG: true,
 				ColumnsOrderable: true,
 				MinSize:          Size{Width: 500, Height: 150},
@@ -214,9 +213,9 @@ func main() {
 				Children: []Widget{
 					Label{Text: "查询结果数量： ", AssignTo: &mw.numLabel},
 					HSpacer{Size: 10},
-					Label{Text: "报错数量： ", AssignTo: &mw.errLable},
+					Label{Text: "报错数量： ", AssignTo: &mw.errLabel},
 					HSpacer{Size: 10},
-					Label{Text: "搜索总耗时： ", AssignTo: &mw.timeLable},
+					Label{Text: "搜索总耗时： ", AssignTo: &mw.timeLabel},
 					HSpacer{},
 
 					CheckBox{
@@ -235,66 +234,66 @@ func main() {
 		return
 	}
 
-	mw.type_exact_match.Clicked().Attach(func() {
+	mw.exactMatchRB.Clicked().Attach(func() {
 		go func() {
 			mw.SetType(EXACT_MATCH)
 		}()
 	})
-	mw.type_regular_match.Clicked().Attach(func() {
+	mw.regularMatchRB.Clicked().Attach(func() {
 		go func() {
 			mw.SetType(REGEX_MATCH)
 		}()
 	})
 	mw.reload.Clicked().Attach(func() {
 		if mw.reload.Checked() {
-			mw.is_reload = true
-			LOG.Printf("Whether to reload: %t\n", mw.is_reload)
+			mw.isReload = true
+			LOG.Printf("Whether to reload: %t\n", mw.isReload)
 		} else {
-			mw.is_reload = false
-			LOG.Printf("Whether to reload: %t\n", mw.is_reload)
+			mw.isReload = false
+			LOG.Printf("Whether to reload: %t\n", mw.isReload)
 
 		}
 	})
 
 	mw.run.Clicked().Attach(func() {
 		switch {
-		case mw.file_or_directory.Text() == "":
+		case mw.searchScope.Text() == "":
 			walk.MsgBox(mw, "提示", "请输入目标所在文件或目录", walk.MsgBoxIconWarning)
 			return
 		case mw.target.Text() == "":
 			walk.MsgBox(mw, "提示", "请输入查找目标", walk.MsgBoxIconWarning)
 			return
-		case mw.match_mode == NONE_MATCH:
+		case mw.matchPattern == NONE_MATCH:
 			walk.MsgBox(mw, "提示", "请选择匹配模式", walk.MsgBoxIconWarning)
 			return
 		}
 
 		if outputDir == "" {
 			walk.MsgBox(mw, "提示", "output文件路径错误，请重新设置（默认：D:\\HS-FS\\output）", walk.MsgBoxIconWarning)
-			runsubwd(replace_subwd, mw)
+			runSettingWd(settingWd, mw)
 
 		}
 
 		if parseDir == "" {
 			walk.MsgBox(mw, "提示", "请先设置待解析文件的路径", walk.MsgBoxIconWarning)
-			runsubwd(replace_subwd, mw)
+			runSettingWd(settingWd, mw)
 		} else if files, _ := os.ReadDir(outputDir); len(files) == 0 {
 			walk.MsgBox(mw, "提示", "output文件夹为空，正在为您自动解析", walk.MsgBoxIconWarning)
 			parse(mw, false)
-		} else if mw.is_reload {
+		} else if mw.isReload {
 			parse(mw, true)
 		} else if len(transfer) == 0 {
 			walk.MsgBox(mw, "提示", "依赖文件被意外删除，需要重新加载", walk.MsgBoxIconWarning)
 			parse(mw, true)
 		}
 
-		save_pre_searchPath(mw)
+		savePreSearchpath(mw)
 
-		mw.search(results_table, errs_table)
+		mw.search(resultsTable, errsTable)
 	})
 
 	mw.set.Clicked().Attach(func() {
-		runsubwd(replace_subwd, mw)
+		runSettingWd(settingWd, mw)
 	})
 
 	mw.quit.Clicked().Attach(func() {
@@ -305,9 +304,9 @@ func main() {
 
 }
 
-func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
+func runSettingWd(settingWd *MySubWindow, mw *MyMainWindow) {
 	if err := (Dialog{
-		AssignTo: &replace_subwd.Dialog,
+		AssignTo: &settingWd.Dialog,
 		MinSize:  Size{Width: 700, Height: 200},
 		Layout:   VBox{},
 
@@ -318,17 +317,17 @@ func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
 					Label{Text: "带解析的文件路径(搜索范围)"},
 					LineEdit{
 						Text:     parseDir,
-						AssignTo: &replace_subwd.parse_path,
+						AssignTo: &settingWd.parsePathEdit,
 						MaxSize:  Size{Width: 450, Height: 20},
 					},
 					PushButton{
 						Text:     "保存更改",
-						AssignTo: &replace_subwd.parse_path_save,
+						AssignTo: &settingWd.parsePathSave,
 					},
 					PushButton{
 						Text: "Browser",
 						OnClicked: func() {
-							browser(replace_subwd)
+							browser(settingWd)
 						},
 					},
 				},
@@ -339,12 +338,12 @@ func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
 					Label{Text: "解析后的输出路径："},
 					LineEdit{
 						Text:     outputDir,
-						AssignTo: &replace_subwd.output_path,
+						AssignTo: &settingWd.outputPathEdit,
 						MaxSize:  Size{Width: 450, Height: 20},
 					},
 					PushButton{
 						Text:     "保存更改",
-						AssignTo: &replace_subwd.output_path_save,
+						AssignTo: &settingWd.outputPathSave,
 					},
 				},
 			},
@@ -355,16 +354,16 @@ func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
 						Text: "生成文件",
 						OnClicked: func() {
 							parse(mw, false)
-							replace_subwd.Accept()
+							settingWd.Accept()
 						},
 					},
 					PushButton{
 						Text: "退出",
 						OnClicked: func() {
-							if parseDir != replace_subwd.parse_path.Text() { //表示没有点save
-								save_parse_path(replace_subwd, mw)
+							if parseDir != settingWd.parsePathEdit.Text() { //表示没有点save
+								saveParsePath(settingWd, mw)
 							}
-							replace_subwd.Accept()
+							settingWd.Accept()
 
 						},
 					},
@@ -375,18 +374,18 @@ func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
 		return
 	}
 
-	replace_subwd.output_path_save.Clicked().Attach(func() {
-		save_output_path(replace_subwd, mw)
+	settingWd.outputPathSave.Clicked().Attach(func() {
+		saveOutputPath(settingWd, mw)
 	})
-	replace_subwd.parse_path_save.Clicked().Attach(func() {
-		save_parse_path(replace_subwd, mw)
+	settingWd.parsePathSave.Clicked().Attach(func() {
+		saveParsePath(settingWd, mw)
 	})
 
-	replace_subwd.Run()
+	settingWd.Run()
 }
 
-func save_parse_path(subwd *MySubWindow, mw *MyMainWindow) {
-	path := filepath.Join(ROOT_DIR, SAVE_parseDir)
+func saveParsePath(subwd *MySubWindow, mw *MyMainWindow) {
+	path := filepath.Join(ROOT_DIR, PARSEDIR_DOC)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		CreateOrLoadParseDir()
 	}
@@ -396,13 +395,13 @@ func save_parse_path(subwd *MySubWindow, mw *MyMainWindow) {
 		walk.MsgBox(mw, "提示", fmt.Sprintf("无法打开文件:%s , 更新失败", path), walk.MsgBoxIconWarning)
 		return
 	}
-	LOG.Printf("更改路径：%s\n", subwd.parse_path.Text())
-	_, err = file.WriteString(subwd.parse_path.Text())
+	LOG.Printf("更改路径：%s\n", subwd.parsePathEdit.Text())
+	_, err = file.WriteString(subwd.parsePathEdit.Text())
 	if err != nil {
-		LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, subwd.parse_path.Text(), err)
+		LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, subwd.parsePathEdit.Text(), err)
 		return
 	}
-	parseDir = subwd.parse_path.Text()
+	parseDir = subwd.parsePathEdit.Text()
 }
 
 func parse(mw *MyMainWindow, Reload bool) {
@@ -414,9 +413,9 @@ func parse(mw *MyMainWindow, Reload bool) {
 		files, _ := os.ReadDir(outputDir)
 		LOG.Printf("正在清除output文件夹， 文件数量：%d\n", len(files))
 
-		mw_clean := new(ProcessMW)
+		cleanWd := new(ProcessWd)
 		MainWindow{
-			AssignTo: &mw_clean.MainWindow,
+			AssignTo: &cleanWd.MainWindow,
 			Title:    "正在清除output文件夹",
 			Size:     Size{500, 200},
 			Layout:   VBox{},
@@ -434,48 +433,48 @@ func parse(mw *MyMainWindow, Reload bool) {
 					Layout: Grid{Columns: 2},
 					Children: []Widget{
 						ProgressBar{
-							AssignTo: &mw_clean.progressBar,
+							AssignTo: &cleanWd.progressBar,
 							MinValue: 0,
 							MaxValue: len(files),
 							OnSizeChanged: func() {
-								if mw_clean.progressBar.Value() == len(files)-1 {
-									mw_clean.Close()
+								if cleanWd.progressBar.Value() == len(files)-1 {
+									cleanWd.Close()
 								}
 							},
 						},
-						Label{AssignTo: &mw_clean.schedule},
+						Label{AssignTo: &cleanWd.schedule},
 					},
 				},
 			},
 		}.Create()
-		mw_clean.Show()
+		cleanWd.Show()
 		go func() {
-			err := clearOutputDir(mw_clean, len(files))
+			err := clearOutputDir(cleanWd, len(files))
 			if err != nil {
 				LOG.Printf("Error clearing output directory %s: %v\n", outputDir, err)
 				walk.MsgBox(mw, "提示", "Error clearing output directory", walk.MsgBoxIconWarning)
 			}
-			mw_clean.Close()
+			cleanWd.Close()
 		}()
-		mw_clean.Run()
+		cleanWd.Run()
 	}
 
 	//清空transfer
 	transfer = make(map[string]transferValue)
 	LOG.Println("清空transfer")
 
-	files_num, err := countFiles()
+	filesNum, err := countFiles()
 	if err != nil {
 		LOG.Printf("count files err: %v\n", err)
 	}
-	LOG.Printf("带解析的文件数量， 文件数量：%d\n", files_num)
+	LOG.Printf("带解析的文件数量， 文件数量：%d\n", filesNum)
 
 	startTime := time.Now()
-	mw_prase := new(ProcessMW)
-	MainWindow{
-		AssignTo: &mw_prase.MainWindow,
+	parseWd := new(ProcessWd)
+	err = MainWindow{
+		AssignTo: &parseWd.MainWindow,
 		Title:    "正在预处理待搜索的文件，请耐心等待",
-		Size:     Size{500, 200},
+		Size:     Size{Width: 500, Height: 200},
 		Layout:   VBox{},
 		Children: []Widget{
 			Composite{
@@ -484,7 +483,7 @@ func parse(mw *MyMainWindow, Reload bool) {
 					Label{
 						Text:      fmt.Sprintf("正在向 %s 写入预处理后的文件", outputDir),
 						Alignment: AlignHNearVNear,
-						MinSize:   Size{50, 10},
+						MinSize:   Size{Width: 50, Height: 10},
 					},
 				},
 			},
@@ -492,31 +491,34 @@ func parse(mw *MyMainWindow, Reload bool) {
 				Layout: Grid{Columns: 2},
 				Children: []Widget{
 					ProgressBar{
-						AssignTo: &mw_prase.progressBar,
+						AssignTo: &parseWd.progressBar,
 						MinValue: 0,
-						MaxValue: files_num,
+						MaxValue: filesNum,
 						OnSizeChanged: func() {
-							if mw_prase.progressBar.Value() == files_num-1 {
-								mw_prase.Close()
+							if parseWd.progressBar.Value() == filesNum-1 {
+								parseWd.Close()
 								walk.MsgBox(mw, "提示", fmt.Sprintf("预处理解析完成, 总耗时: %s", time.Since(startTime)), walk.MsgBoxIconInformation)
 							}
 						},
 					},
-					Label{AssignTo: &mw_prase.schedule},
+					Label{AssignTo: &parseWd.schedule},
 				},
 			},
 		},
 	}.Create()
-	mw_prase.Show()
-	go _prase(mw_prase, files_num)
-	mw_prase.Run()
+	if err != nil {
+		return
+	}
+	parseWd.Show()
+	go Parse_(parseWd, filesNum)
+	parseWd.Run()
 
 	if err := reloadTransferToFile(); err != nil {
 		LOG.Printf("Error reloading transfer to file: %v\n", err)
 	}
 }
 
-type ProcessMW struct {
+type ProcessWd struct {
 	*walk.MainWindow
 	schedule    *walk.Label
 	progressBar *walk.ProgressBar
@@ -525,59 +527,55 @@ type ProcessMW struct {
 type MySubWindow struct {
 	*walk.Dialog
 
-	parse_path      *walk.LineEdit
-	parse_path_save *walk.PushButton
+	parsePathEdit *walk.LineEdit
+	parsePathSave *walk.PushButton
 
-	output_path      *walk.LineEdit
-	output_path_save *walk.PushButton
+	outputPathEdit *walk.LineEdit
+	outputPathSave *walk.PushButton
 }
 
 type MyMainWindow struct {
 	*walk.MainWindow
-
-	type_exact_match   *walk.RadioButton
-	type_regular_match *walk.RadioButton
-	run                *walk.PushButton
-
-	file_or_directory *walk.LineEdit
-	set               *walk.PushButton
-	target            *walk.ComboBox
-
-	out_num  *walk.LineEdit
-	res_view *walk.TableView
-	err_view *walk.TableView
-
-	match_mode int
-	typeLabel  *walk.Label
-	numLabel   *walk.Label
-	errLable   *walk.Label
-	timeLable  *walk.Label
-
+	//第一行
+	searchScope *walk.LineEdit
+	//第二行
+	target         *walk.ComboBox
+	matchPattern   int
+	exactMatchRB   *walk.RadioButton
+	regularMatchRB *walk.RadioButton
+	//结果表与错误表
+	resView *walk.TableView
+	errView *walk.TableView
+	//最后一行
+	numLabel  *walk.Label
+	errLabel  *walk.Label
+	timeLabel *walk.Label
 	reload    *walk.CheckBox
-	is_reload bool
-
-	quit *walk.PushButton
+	isReload  bool
+	run       *walk.PushButton
+	set       *walk.PushButton
+	quit      *walk.PushButton
 }
 
-func (this *MyMainWindow) search(result_table *ResultInfoModel, errs_table *ErrInfoModel) {
-	if IsVaildPath(this.file_or_directory.Text()) == false {
+func (this *MyMainWindow) search(resultTable *ResultInfoModel, errsTable *ErrInfoModel) {
+	if IsValidPath(this.searchScope.Text()) == false {
 		walk.MsgBox(this, "报错", "搜索路径不合法", walk.MsgBoxIconWarning)
 		return
 	}
 	startTime := time.Now()
-	result := _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode, this)
+	result := Search_(this.searchScope.Text(), this.target.Text(), this.matchPattern, this)
 	this.numLabel.SetText("查询结果数量： " + strconv.Itoa(len(result.CallChain)))
-	this.errLable.SetText("报错数量： " + strconv.Itoa(len(result.Errs)))
-	this.timeLable.SetText("搜索总耗时： " + time.Since(startTime).String())
+	this.errLabel.SetText("报错数量： " + strconv.Itoa(len(result.Errs)))
+	this.timeLabel.SetText("搜索总耗时： " + time.Since(startTime).String())
 	LOG.Printf("search complete, results nums: %d, err nums: %d", len(result.CallChain), len(result.Errs))
 
-	result_table.UpdateItems(result.CallChain, result.TargetRowNums)
-	errs_table.UpdateItems(result.Errs)
+	resultTable.UpdateItems(result.CallChain, result.TargetRowNums)
+	errsTable.UpdateItems(result.Errs)
 }
 
 type ResultInfo struct {
-	call_chain      string
-	target_row_nums string
+	callChain     string
+	targetRowNums string
 }
 
 type ResultInfoModel struct {
@@ -599,18 +597,18 @@ func (m *ResultInfoModel) RowCount() int {
 }
 func (m *ResultInfoModel) Value(row, col int) interface{} {
 	if col == 0 {
-		return m.results[row].call_chain
+		return m.results[row].callChain
 	} else if col == 1 {
-		return m.results[row].target_row_nums
+		return m.results[row].targetRowNums
 	}
 	return nil
 }
-func (m *ResultInfoModel) UpdateItems(call_chains []string, rows []string) {
+func (m *ResultInfoModel) UpdateItems(callChains []string, rows []string) {
 	m.results = nil //清空之前的
-	for id, cc := range call_chains {
+	for id, cc := range callChains {
 		item := &ResultInfo{
-			call_chain:      cc,
-			target_row_nums: rows[id],
+			callChain:     cc,
+			targetRowNums: rows[id],
 		}
 		m.results = append(m.results, item)
 	}
@@ -618,7 +616,7 @@ func (m *ResultInfoModel) UpdateItems(call_chains []string, rows []string) {
 }
 
 type ErrInfo struct {
-	err_info string
+	errInfo string
 }
 type ErrInfoModel struct {
 	walk.SortedReflectTableModelBase
@@ -637,7 +635,7 @@ func (m *ErrInfoModel) RowCount() int {
 }
 func (m *ErrInfoModel) Value(row, col int) interface{} {
 	if col == 0 {
-		return m.errs[row].err_info
+		return m.errs[row].errInfo
 	}
 	return nil
 }
@@ -645,7 +643,7 @@ func (m *ErrInfoModel) UpdateItems(errs []string) {
 	m.errs = nil
 	for _, err := range errs {
 		item := &ErrInfo{
-			err_info: err,
+			errInfo: err,
 		}
 		m.errs = append(m.errs, item)
 	}
@@ -653,7 +651,7 @@ func (m *ErrInfoModel) UpdateItems(errs []string) {
 }
 
 func (this *MyMainWindow) SetType(mode int) {
-	this.match_mode = mode
+	this.matchPattern = mode
 }
 
 func extractLastBracketContent(line string) string {
@@ -689,10 +687,10 @@ func countFiles() (int, error) {
 }
 
 func saveHistoryTarget(new_target string) {
-	history_mutex.Lock()
-	defer history_mutex.Unlock()
-	history_path := filepath.Join(ROOT_DIR, SAVE_pre_target)
-	file, err := os.OpenFile(history_path, os.O_RDWR|os.O_CREATE, 0644)
+	historyMutex.Lock()
+	defer historyMutex.Unlock()
+	historyTargetFilePath := filepath.Join(ROOT_DIR, PRE_TARGET_DOC)
+	file, err := os.OpenFile(historyTargetFilePath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		LOG.Println("无法打开文件:", err)
 		return
@@ -726,8 +724,8 @@ func saveHistoryTarget(new_target string) {
 	writer.Flush()
 }
 
-func save_output_path(replace_subwd *MySubWindow, mw *MyMainWindow) {
-	path := filepath.Join(ROOT_DIR, SAVE_outputDir)
+func saveOutputPath(settingWd *MySubWindow, mw *MyMainWindow) {
+	path := filepath.Join(ROOT_DIR, OUTPUTDIR_DOC)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		CreateOrLoadOutputDir()
 	}
@@ -737,20 +735,20 @@ func save_output_path(replace_subwd *MySubWindow, mw *MyMainWindow) {
 		walk.MsgBox(mw, "提示", fmt.Sprintf("无法打开文件:%s , 更新失败", path), walk.MsgBoxIconWarning)
 		return
 	}
-	LOG.Printf("更改路径：%s\n", replace_subwd.output_path.Text())
-	_, err = file.WriteString(replace_subwd.output_path.Text())
+	LOG.Printf("更改路径：%s\n", settingWd.outputPathEdit.Text())
+	_, err = file.WriteString(settingWd.outputPathEdit.Text())
 	if err != nil {
-		LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, replace_subwd.output_path.Text(), err)
+		LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, settingWd.outputPathEdit.Text(), err)
 		return
 	}
-	outputDir = replace_subwd.output_path.Text()
+	outputDir = settingWd.outputPathEdit.Text()
 	LOG.Println("outputDir changed --> " + outputDir)
 }
 
-func save_pre_searchPath(mw *MyMainWindow) {
+func savePreSearchpath(mw *MyMainWindow) {
 	//preSearch_mutex.Lock()
 	//defer preSearch_mutex.Unlock()
-	path := filepath.Join(ROOT_DIR, SAVE_pre_searchPath)
+	path := filepath.Join(ROOT_DIR, PRE_SEARCHPATH_DOC)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		CreateOrLoadOutputDir()
 	}
@@ -760,15 +758,15 @@ func save_pre_searchPath(mw *MyMainWindow) {
 		walk.MsgBox(mw, "提示", fmt.Sprintf("无法打开文件:%s , 更新失败", path), walk.MsgBoxIconWarning)
 		return
 	}
-	LOG.Printf("记录上一次搜索路径：%s\n", mw.file_or_directory.Text())
-	_, err = file.WriteString(mw.file_or_directory.Text())
+	LOG.Printf("记录上一次搜索路径：%s\n", mw.searchScope.Text())
+	_, err = file.WriteString(mw.searchScope.Text())
 	if err != nil {
-		LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, mw.file_or_directory.Text(), err)
+		LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, mw.searchScope.Text(), err)
 		return
 	}
 }
 
-func IsVaildPath(searchPath string) bool {
+func IsValidPath(searchPath string) bool {
 	cleanedPath := filepath.Clean(searchPath)
 	absPath, err := filepath.Abs(cleanedPath)
 	if err != nil {
