@@ -140,19 +140,46 @@ func main() {
 
 				AlternatingRowBG: true,
 				ColumnsOrderable: true,
+				//TODO:选择打开解析前或者解析后的问题
 				OnCurrentIndexChanged: func() {
 					if index := mw.res_view.CurrentIndex(); index > -1 {
-						target_file := extractLastBracketContent(results_table.results[index].call_chain) //拿掉调用链的最后一个函数
-						LOG.Printf("open : %s", target_file)
+						target_file := extractLastBracketContent(results_table.results[index].call_chain) //拿掉调用链的最后一个函数(带有[])
 
-						if transfer_value, exists := transfer[target_file]; exists {
-							cmd := exec.Command("cmd", "/c", "start", "", transfer_value.OriginPath)
-							if err := cmd.Run(); err != nil {
-								walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
-							}
-						} else {
-							walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", results_table.results[index]), walk.MsgBoxIconError)
+						var openFileWD *walk.Dialog
+						if err := (Dialog{
+							AssignTo: &openFileWD,
+							MinSize:  Size{Width: 700, Height: 200},
+							Layout:   VBox{},
+							Children: []Widget{
+								PushButton{
+									Text: "打开解析前的文件",
+									OnClicked: func() {
+										LOG.Printf("open : %s", target_file)
+										if transfer_value, exists := transfer[target_file]; exists {
+											cmd := exec.Command("cmd", "/c", "start", "", transfer_value.OriginPath)
+											if err := cmd.Run(); err != nil {
+												walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
+											}
+										} else {
+											walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", results_table.results[index]), walk.MsgBoxIconError)
+										}
+									},
+								},
+								PushButton{
+									Text: "打开解析后的文件",
+									OnClicked: func() {
+										path := filepath.Join(outputDir, target_file[1:len(target_file)-1]+".code.txt")
+										cmd := exec.Command("cmd", "/c", "start", "", path)
+										if err := cmd.Run(); err != nil {
+											walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
+										}
+									},
+								},
+							},
+						}.Create(mw)); err != nil {
+							return
 						}
+						openFileWD.Run()
 					}
 				},
 				Columns: []TableViewColumn{

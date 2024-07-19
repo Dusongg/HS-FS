@@ -211,6 +211,7 @@ func CreateOrLoadOutputDir() {
 
 	defer file.Close()
 
+	//outputdir.txt为空的情况
 	if scanner := bufio.NewScanner(file); !scanner.Scan() {
 		file.WriteString("D:\\HS-FS\\output")
 	}

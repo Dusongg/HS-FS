@@ -107,7 +107,6 @@ func file_dfs(_filepath string, target string, mode int, bmp *Bitmap) *SearchRes
 	var first_matches_lines []int
 	var foundString string
 
-	//TODO:点击所在行跳转解析后的文件夹
 	for scanner.Scan() {
 		line := scanner.Text()
 		if regex.MatchString(line) {
