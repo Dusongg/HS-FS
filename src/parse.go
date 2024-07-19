@@ -28,7 +28,6 @@ var outputDir string
 var parseDir string
 
 func init() {
-	LOG.Println("Initializing outputDir")
 	if _, err := os.Stat(ROOT_DIR); os.IsNotExist(err) {
 		err := os.Mkdir(ROOT_DIR, 0755)
 		if err != nil {
@@ -286,5 +285,5 @@ func CreateOrLoadPreTarget() {
 	for scanner.Scan() {
 		pre_targets = append(pre_targets, scanner.Text())
 	}
-	LOG.Println("previous search path:", preSearchPath)
+	LOG.Println("previous targets:", pre_targets)
 }

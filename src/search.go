@@ -17,7 +17,7 @@ type SearchResultInfo struct {
 	Errs          []string
 }
 
-func _search(file_or_directory string, target string, mode string, mw *MyMainWindow) *SearchResultInfo {
+func _search(file_or_directory string, target string, mode int, mw *MyMainWindow) *SearchResultInfo {
 	bitmap := NewBitmap(100)
 	path, err := os.Stat(file_or_directory)
 	if err != nil {
@@ -31,7 +31,7 @@ func _search(file_or_directory string, target string, mode string, mw *MyMainWin
 	}
 }
 
-func directory_dfs(directory string, target string, mode string, bmp *Bitmap) *SearchResultInfo {
+func directory_dfs(directory string, target string, mode int, bmp *Bitmap) *SearchResultInfo {
 	result := &SearchResultInfo{}
 	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
 		//log.Println("start at: " + path)
@@ -73,7 +73,7 @@ func directory_dfs(directory string, target string, mode string, bmp *Bitmap) *S
 	return result
 }
 
-func file_dfs(_filepath string, target string, mode string, bmp *Bitmap) *SearchResultInfo {
+func file_dfs(_filepath string, target string, mode int, bmp *Bitmap) *SearchResultInfo {
 	//log.Println("now in: " + _filepath)
 	result := &SearchResultInfo{}
 	var matches []string //该文件调用的原子或业务逻辑
@@ -85,9 +85,7 @@ func file_dfs(_filepath string, target string, mode string, bmp *Bitmap) *Search
 		regex = regexp.MustCompile("\\b" + regexp.QuoteMeta(target) + "\\b")
 	//正则模糊匹配
 	case REGEX_MATCH:
-		//TODO:该功能待实现
-		//regex = regexp.MustCompile("\\.\\d+")
-		return nil
+		regex = regexp.MustCompile(target)
 	}
 
 	file, err := os.Open(_filepath)
@@ -107,14 +105,17 @@ func file_dfs(_filepath string, target string, mode string, bmp *Bitmap) *Search
 	seen := make(map[string]bool) //去重
 	var ans_lines []int           //当前文件匹配到target所在行
 	var first_matches_lines []int
+	var foundString string
 
+	//TODO:点击所在行跳转解析后的文件夹
 	for scanner.Scan() {
 		line := scanner.Text()
 		if regex.MatchString(line) {
-			ans_lines = append(ans_lines, lineNumber)
-			//debug
-			//log.Printf("find target at %s : line<%d>\n", strings.TrimSuffix(filepath.Base(_filepath), filepath.Ext(_filepath)), lineNumber)
 			is_found = true
+			ans_lines = append(ans_lines, lineNumber)
+			if mode == REGEX_MATCH {
+				foundString = regex.FindString(line)
+			}
 		}
 
 		//考虑每一行只有一个[AS|AF|AP|LF|LS]
@@ -138,7 +139,11 @@ func file_dfs(_filepath string, target string, mode string, bmp *Bitmap) *Search
 		for _, line := range ans_lines {
 			row += fmt.Sprintf("<%d>", line)
 		}
-		result.CallChain = append(result.CallChain, func_name)
+		if mode == EXACT_MATCH {
+			result.CallChain = append(result.CallChain, func_name)
+		} else if mode == REGEX_MATCH {
+			result.CallChain = append(result.CallChain, fmt.Sprintf("%s::%s", func_name, foundString))
+		}
 		result.TargetRowNums = append(result.TargetRowNums, row)
 	}
 
@@ -155,6 +160,9 @@ func file_dfs(_filepath string, target string, mode string, bmp *Bitmap) *Search
 				}
 			}
 
+			if len(rets.CallChain) != len(rets.TargetRowNums) {
+				LOG.Fatalf("程序内部错误，callchainSize:%d, tartgetrownumsSize: %d", len(rets.CallChain), len(rets.TargetRowNums))
+			}
 			for i, call_chain := range rets.CallChain {
 				result.CallChain = append(result.CallChain, func_name+" -> "+call_chain)
 				result.TargetRowNums = append(result.TargetRowNums, rets.TargetRowNums[i])

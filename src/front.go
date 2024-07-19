@@ -17,15 +17,15 @@ import (
 )
 
 const (
-	NONE_MATCH  = "NONE_MATCH"
-	EXACT_MATCH = "EXACT_MATCH"
-	REGEX_MATCH = "REGEX_MATCH"
+	NONE_MATCH  = 0
+	EXACT_MATCH = 1
+	REGEX_MATCH = 2
 )
 
 const SAVE_pre_searchPath string = "pre_search.txt"
 
 var pre_targets []string
-var wmutex sync.Mutex
+var history_mutex sync.Mutex
 var LOG = log.New(os.Stdout, "INFO: ", log.LstdFlags|log.Lshortfile)
 var transfer = make(map[string]transferValue)
 
@@ -65,7 +65,9 @@ func main() {
 			mw.file_or_directory.SetText(strings.Join(files, "\r\n"))
 		},
 		OnSizeChanged: func() {
-			pre_targets = pre_targets[:5]
+			if len(pre_targets) > 5 {
+				pre_targets = pre_targets[:5]
+			}
 			mw.target.SetModel(pre_targets)
 		},
 		Children: []Widget{
@@ -93,11 +95,10 @@ func main() {
 				Layout: Grid{Columns: 10},
 				Children: []Widget{
 					Label{Text: "查找目标: "},
-					//LineEdit{AssignTo: &mw.target}, //TODO:下拉查看最近五次的搜索目标
 					ComboBox{
 						Editable: true,
 						AssignTo: &mw.target,
-						Model:    pre_targets, //TODO:每次搜索保存，最多五次，注意打开文件不要清空
+						Model:    pre_targets,
 						OnEditingFinished: func() {
 							new_target := mw.target.Text()
 							LOG.Println("新增一条搜索记录: " + new_target)
@@ -126,9 +127,6 @@ func main() {
 								Name:     "regular_match",
 								Text:     "正则匹配",
 								AssignTo: &mw.type_regular_match,
-								OnClicked: func() {
-									walk.MsgBox(mw, "提示", "该功能尚未实现", walk.MsgBoxIconWarning)
-								},
 							},
 						},
 					},
@@ -201,11 +199,8 @@ func main() {
 					},
 
 					PushButton{AssignTo: &mw.run, Text: "Run"},
-					PushButton{AssignTo: &mw.set, Text: "Setup"},
-					PushButton{
-						Text:     "Quit",
-						AssignTo: &mw.quit,
-					},
+					PushButton{AssignTo: &mw.set, Text: "Settings"},
+					PushButton{AssignTo: &mw.quit, Text: "Quit"},
 				},
 			},
 		},
@@ -266,6 +261,8 @@ func main() {
 			parse(mw, true)
 		}
 
+		save_pre_searchPath(mw)
+
 		mw.search(results_table, errs_table)
 	})
 
@@ -274,22 +271,6 @@ func main() {
 	})
 
 	mw.quit.Clicked().Attach(func() {
-		path := filepath.Join(ROOT_DIR, SAVE_pre_searchPath)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			CreateOrLoadOutputDir()
-		}
-		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-		defer file.Close()
-		if err != nil {
-			walk.MsgBox(mw, "提示", fmt.Sprintf("无法打开文件:%s , 更新失败", path), walk.MsgBoxIconWarning)
-			return
-		}
-		LOG.Printf("记录上一次搜索路径：%s\n", mw.file_or_directory.Text())
-		_, err = file.WriteString(mw.file_or_directory.Text())
-		if err != nil {
-			LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, replace_subwd.output_path.Text(), err)
-			return
-		}
 		mw.Close()
 	})
 
@@ -307,9 +288,8 @@ func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
 			Composite{
 				Layout: Grid{Columns: 10},
 				Children: []Widget{
-					Label{Text: "预处理的文件夹(搜索范围)"},
+					Label{Text: "带解析的文件路径(搜索范围)"},
 					LineEdit{
-						//TODO:下拉查看：将parseDIr以逗号分割开之后下来展示
 						Text:     parseDir,
 						AssignTo: &replace_subwd.parse_path,
 						MaxSize:  Size{Width: 450, Height: 20},
@@ -329,7 +309,7 @@ func runsubwd(replace_subwd *MySubWindow, mw *MyMainWindow) {
 			Composite{
 				Layout: Grid{Columns: 10},
 				Children: []Widget{
-					Label{Text: "更改输出文件路径, 当前路径:  "},
+					Label{Text: "解析后的输出路径："},
 					LineEdit{
 						Text:     outputDir,
 						AssignTo: &replace_subwd.output_path,
@@ -540,7 +520,7 @@ type MyMainWindow struct {
 	res_view *walk.TableView
 	err_view *walk.TableView
 
-	match_mode string
+	match_mode int
 	typeLabel  *walk.Label
 	numLabel   *walk.Label
 	errLable   *walk.Label
@@ -553,12 +533,15 @@ type MyMainWindow struct {
 }
 
 func (this *MyMainWindow) search(result_table *ResultInfoModel, errs_table *ErrInfoModel) {
-	//TODO:处理不合法路径
+	if IsVaildPath(this.file_or_directory.Text()) == false {
+		walk.MsgBox(this, "报错", "搜索路径不合法", walk.MsgBoxIconWarning)
+		return
+	}
 	startTime := time.Now()
 	result := _search(this.file_or_directory.Text(), this.target.Text(), this.match_mode, this)
-	this.numLabel.SetText("查询结果数量：" + strconv.Itoa(len(result.CallChain)))
+	this.numLabel.SetText("查询结果数量： " + strconv.Itoa(len(result.CallChain)))
 	this.errLable.SetText("报错数量： " + strconv.Itoa(len(result.Errs)))
-	this.timeLable.SetText("搜索总耗时" + time.Since(startTime).String())
+	this.timeLable.SetText("搜索总耗时： " + time.Since(startTime).String())
 	LOG.Printf("search complete, results nums: %d, err nums: %d", len(result.CallChain), len(result.Errs))
 
 	result_table.UpdateItems(result.CallChain, result.TargetRowNums)
@@ -642,7 +625,7 @@ func (m *ErrInfoModel) UpdateItems(errs []string) {
 	m.PublishRowsReset()
 }
 
-func (this *MyMainWindow) SetType(mode string) {
+func (this *MyMainWindow) SetType(mode int) {
 	this.match_mode = mode
 }
 
@@ -679,8 +662,8 @@ func countFiles() (int, error) {
 }
 
 func saveHistoryTarget(new_target string) {
-	wmutex.Lock()
-	defer wmutex.Unlock()
+	history_mutex.Lock()
+	defer history_mutex.Unlock()
 	history_path := filepath.Join(ROOT_DIR, SAVE_pre_target)
 	file, err := os.OpenFile(history_path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
@@ -735,4 +718,39 @@ func save_output_path(replace_subwd *MySubWindow, mw *MyMainWindow) {
 	}
 	outputDir = replace_subwd.output_path.Text()
 	LOG.Println("outputDir changed --> " + outputDir)
+}
+
+func save_pre_searchPath(mw *MyMainWindow) {
+	//preSearch_mutex.Lock()
+	//defer preSearch_mutex.Unlock()
+	path := filepath.Join(ROOT_DIR, SAVE_pre_searchPath)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		CreateOrLoadOutputDir()
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	defer file.Close()
+	if err != nil {
+		walk.MsgBox(mw, "提示", fmt.Sprintf("无法打开文件:%s , 更新失败", path), walk.MsgBoxIconWarning)
+		return
+	}
+	LOG.Printf("记录上一次搜索路径：%s\n", mw.file_or_directory.Text())
+	_, err = file.WriteString(mw.file_or_directory.Text())
+	if err != nil {
+		LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, mw.file_or_directory.Text(), err)
+		return
+	}
+}
+
+func IsVaildPath(searchPath string) bool {
+	cleanedPath := filepath.Clean(searchPath)
+	absPath, err := filepath.Abs(cleanedPath)
+	if err != nil {
+		LOG.Printf("absPath error: %v", err)
+		return false
+	}
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		LOG.Printf("searchPath Not Found: %s", searchPath)
+		return false
+	}
+	return true
 }
