@@ -1,16 +1,18 @@
 package main
 
-import "sync"
+//import "sync"
+
+const DEFAULTMAPSIZE = 33124
 
 type Bitmap struct {
-	bits  []uint64
-	mutex sync.RWMutex
+	bits []uint64
+	//mutex sync.RWMutex
 }
 
 // NewBitmap 创建一个新的位图
 func NewBitmap(size int) *Bitmap {
 	if size <= 0 {
-		size = 500
+		size = DEFAULTMAPSIZE
 	}
 	return &Bitmap{
 		bits: make([]uint64, (size+63)/64),
@@ -24,8 +26,8 @@ func (b *Bitmap) Set(pos int) {
 	}
 	index := pos / 64
 
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
+	//b.mutex.Lock()
+	//defer b.mutex.Unlock()
 
 	if index >= len(b.bits) {
 		b.expand(index + 1)
@@ -40,8 +42,8 @@ func (b *Bitmap) Clear(pos int) {
 	}
 	index := pos / 64
 
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
+	//b.mutex.Lock()
+	//defer b.mutex.Unlock()
 
 	if index < len(b.bits) {
 		b.bits[index] &^= 1 << (pos % 64)
@@ -55,8 +57,8 @@ func (b *Bitmap) IsSet(pos int) bool {
 	}
 	index := pos / 64
 
-	b.mutex.RLock()
-	defer b.mutex.RUnlock()
+	//b.mutex.RLock()
+	//defer b.mutex.RUnlock()
 
 	if index < len(b.bits) {
 		return b.bits[index]&(1<<(pos%64)) != 0

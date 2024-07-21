@@ -19,20 +19,19 @@ type SearchResultInfo struct {
 }
 
 func Search_(searchScope string, target string, mode int, mw *MyMainWindow) *SearchResultInfo {
-	bitmap := NewBitmap(100)
 	path, err := os.Stat(searchScope)
 	if err != nil {
 		walk.MsgBox(mw, "警告", err.Error(), walk.MsgBoxIconError)
 		return nil
 	}
 	if path.IsDir() {
-		return asyncDirectoryDFS(searchScope, target, mode, bitmap)
+		return asyncDirectoryDFS(searchScope, target, mode)
 	} else {
-		return fileDFS(searchScope, target, mode, bitmap)
+		return fileDFS(searchScope, target, mode, NewBitmap(DEFAULTMAPSIZE))
 	}
 }
 
-func asyncDirectoryDFS(searchScope string, target string, mode int, bitmap *Bitmap) *SearchResultInfo {
+func asyncDirectoryDFS(searchScope string, target string, mode int) *SearchResultInfo {
 	subDirs, err := os.ReadDir(searchScope)
 	if err != nil {
 		log.Fatal(err)
@@ -51,13 +50,13 @@ func asyncDirectoryDFS(searchScope string, target string, mode int, bitmap *Bitm
 				defer wg.Done()
 				result := directoryDFS(searchScope, target, mode, bitmap)
 				results <- result
-			}(filepath.Join(searchScope, subDir.Name()), target, mode, bitmap)
+			}(filepath.Join(searchScope, subDir.Name()), target, mode, NewBitmap(DEFAULTMAPSIZE))
 		} else {
 			go func(searchScope string, target string, mode int, bitmap *Bitmap) {
 				defer wg.Done()
 				result := fileDFS(searchScope, target, mode, bitmap)
 				results <- result
-			}(filepath.Join(searchScope, subDir.Name()), target, mode, bitmap)
+			}(filepath.Join(searchScope, subDir.Name()), target, mode, NewBitmap(DEFAULTMAPSIZE))
 		}
 	}
 
