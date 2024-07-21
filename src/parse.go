@@ -23,7 +23,7 @@ const PARSEDIR_DOC string = "parse.txt"
 const PRE_TARGET_DOC string = "pre_target.txt"
 const transferFile string = "D:\\HS-FS\\transfer.json"
 
-var preSearchPath string
+var preSearchPaths []string
 var outputDir string
 var parseDir string
 
@@ -263,9 +263,9 @@ func CreateOrLoadPreSearchDir() {
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		preSearchPath = scanner.Text()
+		preSearchPaths = append(preSearchPaths, scanner.Text())
 	}
-	LOG.Println("previous search path:", preSearchPath)
+	LOG.Println("previous search path:", preSearchPaths)
 }
 
 func CreateOrLoadPreTarget() {

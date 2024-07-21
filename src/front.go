@@ -25,7 +25,8 @@ const (
 const PRE_SEARCHPATH_DOC string = "pre_search.txt"
 
 var preTargets []string
-var historyMutex sync.Mutex
+var historyTargetMutex sync.Mutex //
+var historySearchMutex sync.Mutex
 var LOG = log.New(os.Stdout, "INFO: ", log.LstdFlags|log.Lshortfile)
 var transfer = make(map[string]transferValue)
 
@@ -64,11 +65,26 @@ func main() {
 		OnDropFiles: func(files []string) {
 			mw.searchScope.SetText(strings.Join(files, "\r\n"))
 		},
-		OnSizeChanged: func() {
+		OnSizeChanged: func() { //打开窗口即加载
 			if len(preTargets) > 5 {
 				preTargets = preTargets[:5]
 			}
+			if len(preTargets) != 0 {
+				mw.target.SetText(preTargets[0])
+			}
 			mw.target.SetModel(preTargets)
+
+			if len(preSearchPaths) > 5 {
+				preSearchPaths = preSearchPaths[:5]
+			}
+			if len(preSearchPaths) != 0 {
+				mw.searchScope.SetText(preSearchPaths[0])
+			}
+			mw.searchScope.SetModel(preSearchPaths)
+
+			mw.exactMatchRB.SetChecked(true)
+			mw.matchPattern = EXACT_MATCH
+
 		},
 		Children: []Widget{
 			//第一行：搜索路径
@@ -78,9 +94,10 @@ func main() {
 					Label{
 						Text: "目录 / 文件: ",
 					},
-					LineEdit{
-						Text:     preSearchPath,
+					ComboBox{
+						Editable: true,
 						AssignTo: &mw.searchScope,
+						Model:    preSearchPaths,
 					},
 					PushButton{
 						Text: "Browser",
@@ -100,17 +117,8 @@ func main() {
 						AssignTo: &mw.target,
 						Model:    preTargets,
 						OnEditingFinished: func() {
-							newTarget := mw.target.Text()
-							LOG.Println("新增一条搜索记录: " + newTarget)
-							preTargets = append([]string{newTarget}, preTargets...)
-							if len(preTargets) > 5 {
-								preTargets = preTargets[:5]
-							}
-							LOG.Println("当前preTargets:", preTargets)
-							mw.target.SetModel(preTargets)
-							mw.target.SetText(newTarget)
 							go func() {
-								saveHistoryTarget(newTarget)
+								saveHistoryTarget(mw)
 							}()
 						},
 					},
@@ -253,7 +261,9 @@ func main() {
 			parse(mw, true)
 		}
 
-		savePreSearchPath(mw)
+		go func() {
+			savePreSearchPath(mw)
+		}()
 		LOG.Println("start to search")
 		mw.search(resultsTable, errsTable)
 	})
@@ -503,7 +513,7 @@ type MySubWindow struct {
 type MyMainWindow struct {
 	*walk.MainWindow
 	//第一行
-	searchScope *walk.LineEdit
+	searchScope *walk.ComboBox
 	//第二行
 	target         *walk.ComboBox
 	matchPattern   int
@@ -652,16 +662,99 @@ func countFiles() (int, error) {
 	return count, nil
 }
 
-func saveHistoryTarget(newTarget string) {
-	historyMutex.Lock()
-	defer historyMutex.Unlock()
+func saveOutputPath(settingWd *MySubWindow, mw *MyMainWindow) {
+	path := filepath.Join(ROOT_DIR, OUTPUTDIR_DOC)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		CreateOrLoadOutputDir()
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	defer file.Close()
+	if err != nil {
+		walk.MsgBox(mw, "提示", fmt.Sprintf("无法打开文件:%s , 更新失败", path), walk.MsgBoxIconWarning)
+		return
+	}
+	LOG.Printf("更改路径：%s\n", settingWd.outputPathEdit.Text())
+	_, err = file.WriteString(settingWd.outputPathEdit.Text())
+	if err != nil {
+		LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, settingWd.outputPathEdit.Text(), err)
+		return
+	}
+	outputDir = settingWd.outputPathEdit.Text()
+	LOG.Println("outputDir changed --> " + outputDir)
+}
+
+func savePreSearchPath(mw *MyMainWindow) {
+	historySearchMutex.Lock()
+	defer historySearchMutex.Unlock()
+
+	newSearchPath := mw.searchScope.Text()
+	LOG.Println("新增一条搜索路径记录: " + newSearchPath)
+	preSearchPaths = append([]string{newSearchPath}, preSearchPaths...)
+	if len(preSearchPaths) > 5 {
+		preSearchPaths = preSearchPaths[:5]
+	}
+	LOG.Println("当前preTargets:", preTargets)
+	mw.searchScope.SetModel(preSearchPaths)
+	mw.searchScope.SetText(newSearchPath)
+
+	path := filepath.Join(ROOT_DIR, PRE_SEARCHPATH_DOC)
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	defer file.Close()
+	if err != nil {
+		walk.MsgBox(mw, "提示", fmt.Sprintf("无法打开文件:%s , 更新失败", path), walk.MsgBoxIconWarning)
+		return
+	}
+
+	LOG.Printf("记录上一次搜索路径：%s\n", mw.searchScope.Text())
+
+	scanner := bufio.NewScanner(file)
+	var lines []string
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("读取文件出错:", err)
+		return
+	}
+	lines = append([]string{newSearchPath}, lines...)
+
+	if len(lines) > 20 {
+		lines = lines[:10]
+	}
+	file.Truncate(0)
+	file.Seek(0, 0)
+	writer := bufio.NewWriter(file)
+	for _, line := range lines {
+		_, err := writer.WriteString(line + "\n")
+		if err != nil {
+			LOG.Println("写入文件出错:", err)
+			return
+		}
+	}
+	writer.Flush()
+}
+
+func saveHistoryTarget(mw *MyMainWindow) {
+	historyTargetMutex.Lock()
+	defer historyTargetMutex.Unlock()
+
+	newTarget := mw.target.Text()
+	LOG.Println("新增一条搜索目标记录: " + newTarget)
+	preTargets = append([]string{newTarget}, preTargets...)
+	if len(preTargets) > 5 {
+		preTargets = preTargets[:5]
+	}
+	LOG.Println("当前preTargets:", preTargets)
+	mw.target.SetModel(preTargets)
+	mw.target.SetText(newTarget)
+
 	historyTargetFilePath := filepath.Join(ROOT_DIR, PRE_TARGET_DOC)
 	file, err := os.OpenFile(historyTargetFilePath, os.O_RDWR|os.O_CREATE, 0644)
+	defer file.Close()
 	if err != nil {
 		LOG.Println("无法打开文件:", err)
 		return
 	}
-	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	var lines []string
@@ -688,48 +781,6 @@ func saveHistoryTarget(newTarget string) {
 		}
 	}
 	writer.Flush()
-}
-
-func saveOutputPath(settingWd *MySubWindow, mw *MyMainWindow) {
-	path := filepath.Join(ROOT_DIR, OUTPUTDIR_DOC)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		CreateOrLoadOutputDir()
-	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	defer file.Close()
-	if err != nil {
-		walk.MsgBox(mw, "提示", fmt.Sprintf("无法打开文件:%s , 更新失败", path), walk.MsgBoxIconWarning)
-		return
-	}
-	LOG.Printf("更改路径：%s\n", settingWd.outputPathEdit.Text())
-	_, err = file.WriteString(settingWd.outputPathEdit.Text())
-	if err != nil {
-		LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, settingWd.outputPathEdit.Text(), err)
-		return
-	}
-	outputDir = settingWd.outputPathEdit.Text()
-	LOG.Println("outputDir changed --> " + outputDir)
-}
-
-func savePreSearchPath(mw *MyMainWindow) {
-	//preSearch_mutex.Lock()
-	//defer preSearch_mutex.Unlock()
-	path := filepath.Join(ROOT_DIR, PRE_SEARCHPATH_DOC)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		CreateOrLoadOutputDir()
-	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	defer file.Close()
-	if err != nil {
-		walk.MsgBox(mw, "提示", fmt.Sprintf("无法打开文件:%s , 更新失败", path), walk.MsgBoxIconWarning)
-		return
-	}
-	LOG.Printf("记录上一次搜索路径：%s\n", mw.searchScope.Text())
-	_, err = file.WriteString(mw.searchScope.Text())
-	if err != nil {
-		LOG.Printf("向 %s 写入 %s 错误 : %v\n, 更新失败", path, mw.searchScope.Text(), err)
-		return
-	}
 }
 
 func IsValidPath(searchPath string) bool {
