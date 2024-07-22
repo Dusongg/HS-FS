@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/xml"
 	"fmt"
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
@@ -276,7 +277,10 @@ func runSettingWd(settingWd *MySubWindow, mw *MyMainWindow) {
 		AssignTo: &settingWd.Dialog,
 		MinSize:  Size{Width: 700, Height: 200},
 		Layout:   VBox{},
-
+		OnSizeChanged: func() {
+			isWithComments = settingWd.withComments.Checked() //默认没有点击，即默认不带注释
+			fmt.Println(isWithComments)
+		},
 		Children: []Widget{
 			Composite{
 				Layout: Grid{Columns: 10},
@@ -322,6 +326,8 @@ func runSettingWd(settingWd *MySubWindow, mw *MyMainWindow) {
 						AssignTo: &settingWd.withComments,
 						OnClicked: func() {
 							isWithComments = settingWd.withComments.Checked() //默认没有点击，即默认不带注释
+							fmt.Println(isWithComments)
+
 						},
 					},
 					PushButton{
@@ -455,7 +461,7 @@ func parse(mw *MyMainWindow, reload bool) {
 				Layout: Grid{Columns: 1},
 				Children: []Widget{
 					Label{
-						Text:      fmt.Sprintf("正在向 %s 写入预处理后的文件", outputDir),
+						Text:      fmt.Sprintf("正在将:\n\r%s\n\r中的文件解析并写入到:%s", parseDir, outputDir),
 						Alignment: AlignHNearVNear,
 						MinSize:   Size{Width: 50, Height: 10},
 					},
@@ -653,6 +659,16 @@ func countFiles() (int, error) {
 				return filepath.SkipDir // 跳过整个目录
 			}
 			if !info.IsDir() {
+				data, err := os.ReadFile(path)
+				if err != nil {
+					return fmt.Errorf("failed to read file %s: %v", path, err)
+				}
+				var hsdoc Hsdoc
+				err = xml.Unmarshal(data, &hsdoc)
+				if err != nil {
+					ERROR.Printf("failed to unmarshal XML from file %s: %v\n", path, err)
+					return filepath.SkipDir
+				}
 				count++
 			}
 			return nil
