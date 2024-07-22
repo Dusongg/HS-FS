@@ -18,7 +18,13 @@ type SearchResultInfo struct {
 	Errs          []string
 }
 
+var (
+	memo     = make(map[string]*SearchResultInfo)
+	memoLock sync.RWMutex
+)
+
 func Search_(searchScope string, target string, mode int, mw *MyMainWindow) *SearchResultInfo {
+	memo = make(map[string]*SearchResultInfo)
 	path, err := os.Stat(searchScope)
 	if err != nil {
 		walk.MsgBox(mw, "警告", err.Error(), walk.MsgBoxIconError)
@@ -27,7 +33,9 @@ func Search_(searchScope string, target string, mode int, mw *MyMainWindow) *Sea
 	if path.IsDir() {
 		return asyncDirectoryDFS(searchScope, target, mode)
 	} else {
+		searchScope = filepath.Join(ROOT_DIR, filepath.Base(searchScope)+".code.txt")
 		return fileDFS(searchScope, target, mode, NewBitmap(DEFAULTMAPSIZE))
+
 	}
 }
 
@@ -54,6 +62,7 @@ func asyncDirectoryDFS(searchScope string, target string, mode int) *SearchResul
 		} else {
 			go func(searchScope string, target string, mode int, bitmap *Bitmap) {
 				defer wg.Done()
+				searchScope = filepath.Join(ROOT_DIR, filepath.Base(searchScope)+".code.txt")
 				result := fileDFS(searchScope, target, mode, bitmap)
 				results <- result
 			}(filepath.Join(searchScope, subDir.Name()), target, mode, NewBitmap(DEFAULTMAPSIZE))
@@ -90,14 +99,16 @@ func directoryDFS(directory string, target string, mode int, bmp *Bitmap) *Searc
 			//输入类似："D:\1_hundsun代码\DevCodes\经纪业务运营平台V21\业务逻辑\存管\UFT接口管理\服务\LS_UFT接口管理_UFT系统委托同步结果查询.service_design"
 			//添加文件目录
 			funcName := fmt.Sprintf("[%s]", strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
-			inputFilename := outputDir + "/" + funcName[1:len(funcName)-1] + ".code.txt"
+			path = outputDir + "/" + funcName[1:len(funcName)-1] + ".code.txt"
 			//for _, result := range file_dfs(intput_filename, target, mode) {
 			//	results = append(results, strings.TrimSuffix(path, filepath.Base(path)) + ": " + result)
 			//}
 
 			if tv, exist := transfer[funcName]; exist && !bmp.IsSet(tv.SerialNumber) {
 				bmp.Set(transfer[funcName].SerialNumber)
-				ret := fileDFS(inputFilename, target, mode, bmp)
+
+				ret := fileDFS(path, target, mode, bmp)
+
 				if len(ret.Errs) != 0 {
 					result.Errs = append(result.Errs, ret.Errs...)
 				}
@@ -110,14 +121,21 @@ func directoryDFS(directory string, target string, mode int, bmp *Bitmap) *Searc
 		return nil
 	})
 	if err != nil {
-		log.Println(err)
+		ERROR.Println("open dir when search: ", err)
 		return nil
 	}
 	return result
 }
 
+// _filepath: outputDir + "/" + funcName[1:len(funcName)-1] + ".code.txt"
 func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResultInfo {
-	//log.Println("now in: " + _filepath)
+	memoLock.RLock()
+	if pre, exist := memo[_filepath]; exist {
+		memoLock.RUnlock()
+		return pre
+	} else {
+		memoLock.RUnlock()
+	}
 	result := &SearchResultInfo{}
 	var matches []string //该文件调用的原子或业务逻辑
 
@@ -190,8 +208,6 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 			result.CallChain = append(result.CallChain, fmt.Sprintf("%s::%s", funcName, foundString))
 		}
 		result.TargetRowNums = append(result.TargetRowNums, row)
-
-		//LOG.Println(result.CallChain)
 	}
 
 	for id, matchedFuncName := range matches {
@@ -200,6 +216,7 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 		if tv, exist := transfer[matchedFuncName]; exist && !bmp.IsSet(tv.SerialNumber) {
 			bmp.Set(tv.SerialNumber)
 			rets := fileDFS(nextFile, target, mode, bmp)
+
 			if rets.Errs != nil {
 				for _, e := range rets.Errs {
 					//那个文件在哪一行调用那个方法导致报错
@@ -208,7 +225,7 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 			}
 
 			if len(rets.CallChain) != len(rets.TargetRowNums) {
-				LOG.Fatalf("程序内部错误，callchainSize:%d, tartgetrownumsSize: %d", len(rets.CallChain), len(rets.TargetRowNums))
+				FATAL.Fatalf("程序内部错误，callchainSize:%d, tartgetrownumsSize: %d", len(rets.CallChain), len(rets.TargetRowNums))
 			}
 			for i, callChain := range rets.CallChain {
 				result.CallChain = append(result.CallChain, funcName+" -> "+callChain)
@@ -227,8 +244,11 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Println("Error reading file:", err)
+		ERROR.Println("Error reading file:", err)
 	}
 
+	memoLock.Lock()
+	memo[_filepath] = result
+	memoLock.Unlock()
 	return result
 }
