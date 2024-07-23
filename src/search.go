@@ -33,8 +33,10 @@ func Search_(searchScope string, target string, mode int, mw *MyMainWindow) *Sea
 	if path.IsDir() {
 		return asyncDirectoryDFS(searchScope, target, mode)
 	} else {
-		searchScope = filepath.Join(ROOT_DIR, filepath.Base(searchScope)+".code.txt")
-		return fileDFS(searchScope, target, mode, NewBitmap(DEFAULTMAPSIZE))
+		if !originalSearch {
+			searchScope = filepath.Join(ROOT_DIR, filepath.Base(searchScope)+".code.txt")
+		}
+		return fileDFS(searchScope, target, mode)
 
 	}
 }
@@ -56,14 +58,16 @@ func asyncDirectoryDFS(searchScope string, target string, mode int) *SearchResul
 		if subDir.IsDir() {
 			go func(searchScope string, target string, mode int, bitmap *Bitmap) {
 				defer wg.Done()
-				result := directoryDFS(searchScope, target, mode, bitmap)
+				result := directoryDFS(searchScope, target, mode)
 				results <- result
 			}(filepath.Join(searchScope, subDir.Name()), target, mode, NewBitmap(DEFAULTMAPSIZE))
 		} else {
 			go func(searchScope string, target string, mode int, bitmap *Bitmap) {
 				defer wg.Done()
-				searchScope = filepath.Join(ROOT_DIR, filepath.Base(searchScope)+".code.txt")
-				result := fileDFS(searchScope, target, mode, bitmap)
+				if !originalSearch {
+					searchScope = filepath.Join(ROOT_DIR, filepath.Base(searchScope)+".code.txt")
+				}
+				result := fileDFS(searchScope, target, mode)
 				results <- result
 			}(filepath.Join(searchScope, subDir.Name()), target, mode, NewBitmap(DEFAULTMAPSIZE))
 		}
@@ -84,7 +88,7 @@ func asyncDirectoryDFS(searchScope string, target string, mode int) *SearchResul
 	return finalResults
 }
 
-func directoryDFS(directory string, target string, mode int, bmp *Bitmap) *SearchResultInfo {
+func directoryDFS(directory string, target string, mode int) *SearchResultInfo {
 	result := &SearchResultInfo{}
 	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
 		//LOG.Println("start at: " + path)
@@ -104,17 +108,13 @@ func directoryDFS(directory string, target string, mode int, bmp *Bitmap) *Searc
 			//	results = append(results, strings.TrimSuffix(path, filepath.Base(path)) + ": " + result)
 			//}
 
-			if tv, exist := transfer[funcName]; exist && !bmp.IsSet(tv.SerialNumber) {
-				bmp.Set(transfer[funcName].SerialNumber)
-
-				ret := fileDFS(path, target, mode, bmp)
-
+			if _, exist := transfer[funcName]; exist {
+				ret := fileDFS(path, target, mode)
 				if len(ret.Errs) != 0 {
 					result.Errs = append(result.Errs, ret.Errs...)
 				}
 				result.CallChain = append(result.CallChain, ret.CallChain...)
 				result.TargetRowNums = append(result.TargetRowNums, ret.TargetRowNums...)
-				bmp.Clear(tv.SerialNumber)
 			}
 
 		}
@@ -127,8 +127,8 @@ func directoryDFS(directory string, target string, mode int, bmp *Bitmap) *Searc
 	return result
 }
 
-// _filepath: outputDir + "/" + funcName[1:len(funcName)-1] + ".code.txt"
-func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResultInfo {
+// _filepath: outputDir + "/" + funcName[1:len(funcName)-1] + ".code.txt" 或 .aservice_design....
+func fileDFS(_filepath string, target string, mode int) *SearchResultInfo {
 	memoLock.RLock()
 	if pre, exist := memo[_filepath]; exist {
 		memoLock.RUnlock()
@@ -143,7 +143,7 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 	switch mode {
 	//精准匹配
 	case EXACT_MATCH:
-		regex = regexp.MustCompile("\\b" + regexp.QuoteMeta(target) + "\\b")
+		regex = regexp.MustCompile(regexp.QuoteMeta(target))
 	//正则模糊匹配
 	case REGEX_MATCH:
 		regex = regexp.MustCompile(target)
@@ -156,8 +156,12 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 	}
 	defer file.Close()
 
-	funcName := fmt.Sprintf("[%s]", strings.TrimSuffix(filepath.Base(_filepath), ".code.txt")) //[AF_xxx|AS_xx|LF_xx....]
-	bmp.Set(transfer[funcName].SerialNumber)
+	var funcName string
+	if originalSearch {
+		funcName = fmt.Sprintf("[%s]", strings.TrimSuffix(filepath.Base(_filepath), filepath.Ext(_filepath)))
+	} else {
+		funcName = fmt.Sprintf("[%s]", strings.TrimSuffix(filepath.Base(_filepath), ".code.txt")) //[AF_xxx|AS_xx|LF_xx....]
+	}
 
 	funcRegex := regexp.MustCompile(`\[(AS|AF|AP|LF|LS)_[^]]+\]`)
 	isFound := false
@@ -211,12 +215,20 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 	}
 
 	for id, matchedFuncName := range matches {
-		nextFile := outputDir + "/" + matchedFuncName[1:len(matchedFuncName)-1] + ".code.txt"
-		//dfs
-		if tv, exist := transfer[matchedFuncName]; exist && !bmp.IsSet(tv.SerialNumber) {
-			bmp.Set(tv.SerialNumber)
-			rets := fileDFS(nextFile, target, mode, bmp)
-
+		var nextFile string
+		if transfer == nil {
+			FATAL.Fatalf("transfer is nil")
+		}
+		if originalSearch {
+			if _, exist := transfer[matchedFuncName]; exist {
+				nextFile = transfer[matchedFuncName].OriginPath
+			}
+		} else {
+			nextFile = outputDir + "/" + matchedFuncName[1:len(matchedFuncName)-1] + ".code.txt"
+		}
+		//dfs && !bmp.IsSet(tv.SerialNumber)
+		if _, exist := transfer[matchedFuncName]; exist && matchedFuncName != funcName {
+			rets := fileDFS(nextFile, target, mode)
 			if rets.Errs != nil {
 				for _, e := range rets.Errs {
 					//那个文件在哪一行调用那个方法导致报错
@@ -231,13 +243,11 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 				result.CallChain = append(result.CallChain, funcName+" -> "+callChain)
 				result.TargetRowNums = append(result.TargetRowNums, rets.TargetRowNums[i])
 			}
-			bmp.Clear(tv.SerialNumber)
 		} else {
 			if !exist {
 				result.Errs = append(result.Errs, fmt.Sprintf("%s<%d> -> %s was not found", funcName, firstMatchesLines[id], matchedFuncName))
 			} else {
-				result.Errs = append(result.Errs, fmt.Sprintf("%s<%d> -> %s has been visited", matchedFuncName, firstMatchesLines[id], funcName))
-
+				//result.Errs = append(result.Errs, fmt.Sprintf("%s<%d> -> %s has been visited", matchedFuncName, firstMatchesLines[id], funcName))
 			}
 		}
 
@@ -251,4 +261,57 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 	memo[_filepath] = result
 	memoLock.Unlock()
 	return result
+}
+
+func asyncSerach(searchScope string, target string, mode int) *SearchResultInfo {
+	memo = make(map[string]*SearchResultInfo)
+	_, err := os.Stat(searchScope)
+	if err != nil {
+		return nil
+	}
+
+	var n sync.WaitGroup
+	resultChan := make(chan *SearchResultInfo, 100)
+	results := &SearchResultInfo{}
+
+	n.Add(1)
+	go walkDirSearch(searchScope, target, mode, &n, resultChan)
+
+	go func() {
+		for ret := range resultChan {
+			results.CallChain = append(results.CallChain, ret.CallChain...)
+			results.TargetRowNums = append(results.TargetRowNums, ret.TargetRowNums...)
+			results.Errs = append(results.Errs, ret.Errs...)
+		}
+	}()
+	n.Wait()
+	return results
+}
+
+func walkDirSearch(dir string, target string, mode int, n *sync.WaitGroup, resultChan chan *SearchResultInfo) {
+	defer n.Done()
+	for _, entry := range direntsSearch(dir) {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		if entry.IsDir() {
+			n.Add(1)
+			go walkDirSearch(path, target, mode, n, resultChan)
+		} else {
+			if !originalSearch {
+				path = filepath.Join(outputDir, strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))+".code.txt")
+			}
+			resultChan <- fileDFS(path, target, mode)
+		}
+	}
+}
+
+func direntsSearch(dir string) []os.DirEntry {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "du1: %v\n", err)
+		return nil
+	}
+	return entries
 }

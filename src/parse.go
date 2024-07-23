@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type transferValue struct {
@@ -316,4 +317,103 @@ func CreateOrLoadPreTarget() {
 		preTargets = append(preTargets, scanner.Text())
 	}
 	LOG.Println("previous targets:", preTargets)
+}
+
+//func GetTransfer() {
+//	serialNum := 0
+//	dirs := strings.Split(parseDir, ",") //bug:路径名带有,
+//	for _, dir := range dirs {
+//		LOG.Println(dir)
+//	}
+//	for _, dir := range dirs {
+//		dir = addEscapeBackslash(dir) //转义
+//		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+//			if err != nil {
+//				return err
+//			}
+//			if info.IsDir() && strings.HasPrefix(info.Name(), ".") {
+//				return filepath.SkipDir // 跳过整个目录
+//			}
+//			if !info.IsDir() {
+//				baseWithoutExt := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+//				transfer[fmt.Sprintf("[%s]", baseWithoutExt)] = transferValue{
+//					SerialNumber: serialNum,
+//					OriginPath:   path,
+//				}
+//				serialNum++
+//			}
+//			return nil
+//		})
+//		if err != nil {
+//			ERROR.Printf("end Error: %v\n", err)
+//			return
+//		}
+//		transferJson, err := json.Marshal(transfer)
+//		if err != nil {
+//			ERROR.Println(err)
+//			return
+//		}
+//		err = os.WriteFile(transferFile, transferJson, 0644)
+//		if err != nil {
+//			ERROR.Println(err)
+//		}
+//	}
+//}
+
+var sema = make(chan struct{}, 20)
+var gSerialNum = 0
+var mutex sync.Mutex
+
+func GetTransfer() {
+	var n sync.WaitGroup
+	dirs := strings.Split(parseDir, ",")
+	for _, dir := range dirs {
+		dir = addEscapeBackslash(dir)
+		n.Add(1)
+		go walkDir(dir, &n)
+	}
+	n.Wait()
+	transferJson, err := json.Marshal(transfer)
+	if err != nil {
+		ERROR.Println(err)
+		return
+	}
+	err = os.WriteFile(transferFile, transferJson, 0644)
+	if err != nil {
+		ERROR.Println(err)
+	}
+}
+
+func walkDir(dir string, n *sync.WaitGroup) {
+	defer n.Done()
+	for _, entry := range dirents(dir) {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		if entry.IsDir() {
+			n.Add(1)
+			go walkDir(path, n)
+		} else {
+			baseWithoutExt := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+			mutex.Lock()
+			transfer[fmt.Sprintf("[%s]", baseWithoutExt)] = transferValue{
+				SerialNumber: gSerialNum,
+				OriginPath:   path,
+			}
+			gSerialNum++
+			mutex.Unlock()
+		}
+	}
+}
+
+func dirents(dir string) []os.DirEntry {
+	sema <- struct{}{}
+	defer func() { <-sema }()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "du1: %v\n", err)
+		return nil
+	}
+	return entries
 }

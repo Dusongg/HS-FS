@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +32,7 @@ var (
 	historyTargetMutex sync.Mutex //
 	historySearchMutex sync.Mutex
 	isWithComments     bool = false //默认不带注释
+	originalSearch     bool = false //默认搜索解析后的文件
 )
 
 // 日志
@@ -147,15 +149,26 @@ func main() {
 				MinSize:          Size{Width: 500, Height: 350},
 				AlternatingRowBG: true,
 				ColumnsOrderable: true,
-				OnMouseDown: func(x, y int, button walk.MouseButton) {
+				OnItemActivated: func() {
 					if index := mw.resView.CurrentIndex(); index > -1 {
-						switch {
-						case button == walk.LeftButton:
-							targetFile := extractLastBracketContent(resultsTable.results[index].callChain) //拿掉调用链的最后一个函数(带有[])
+						targetFile := extractLastBracketContent(resultsTable.results[index].callChain) //拿掉调用链的最后一个函数(带有[])
+						if originalSearch {
+							if transferValue, exists := transfer[targetFile]; exists {
+								cmd := exec.Command("cmd", "/c", "start", "", transferValue.OriginPath)
+								if err := cmd.Run(); err != nil {
+									walk.MsgBox(mw, "报错", err.Error(), walk.MsgBoxIconError)
+								}
+							} else {
+								walk.MsgBox(mw, "报错", fmt.Sprintf("can not find source file of: %s", targetFile), walk.MsgBoxIconError)
+							}
+						} else {
 							OpenFile(mw, targetFile)
-						case button == walk.RightButton:
-							walk.Clipboard().SetText(resultsTable.results[index].callChain)
 						}
+					}
+				},
+				OnMouseDown: func(x, y int, button walk.MouseButton) {
+					if index := mw.resView.CurrentIndex(); index > -1 && button == walk.RightButton {
+						walk.Clipboard().SetText(resultsTable.results[index].callChain)
 					}
 				},
 				Columns: []TableViewColumn{
@@ -175,13 +188,20 @@ func main() {
 				Model:            errsTable,
 				AlternatingRowBG: true,
 				ColumnsOrderable: true,
-				MinSize:          Size{Width: 500, Height: 150},
-
+				MinSize:          Size{Width: 500, Height: 100},
 				Columns: []TableViewColumn{
 					TableViewColumn{
 						Width:      1000,
 						DataMember: "报错",
 					},
+				},
+				StyleCell: func(style *walk.CellStyle) {
+					style.TextColor = walk.RGB(255, 0, 0)
+				},
+				OnMouseDown: func(x, y int, button walk.MouseButton) {
+					if index := mw.errView.CurrentIndex(); index > -1 && button == walk.RightButton {
+						walk.Clipboard().SetText(errsTable.errs[index].errInfo)
+					}
 				},
 			},
 			//最后一行
@@ -195,6 +215,17 @@ func main() {
 					Label{Text: "搜索总耗时： ", AssignTo: &mw.timeLabel},
 					HSpacer{},
 
+					CheckBox{
+						Text:     "原文本搜索",
+						AssignTo: &mw.isOriginal,
+						OnClicked: func() {
+							if mw.isOriginal.Checked() {
+								originalSearch = true
+							} else {
+								originalSearch = false
+							}
+						},
+					},
 					CheckBox{
 						Text:     "重新解析",
 						AssignTo: &mw.isreload,
@@ -234,29 +265,31 @@ func main() {
 			return
 		}
 
-		if outputDir == "" {
+		if outputDir == "" && !originalSearch {
 			walk.MsgBox(mw, "提示", "output文件路径错误，请重新设置（默认：D:\\HS-FS\\output）", walk.MsgBoxIconWarning)
 			runSettingWd(settingWd, mw)
-
 		}
-
 		if parseDir == "" {
-			walk.MsgBox(mw, "提示", "请先设置待解析文件的路径", walk.MsgBoxIconWarning)
+			walk.MsgBox(mw, "提示", "请先设置待解析文件的路径(搜索路径)", walk.MsgBoxIconWarning)
 			runSettingWd(settingWd, mw)
-		} else if files, _ := os.ReadDir(outputDir); len(files) == 0 {
+		} else if files, _ := os.ReadDir(outputDir); len(files) == 0 && !originalSearch {
 			walk.MsgBox(mw, "提示", "output文件夹为空，正在为您自动解析", walk.MsgBoxIconWarning)
 			parse(mw, false)
-		} else if mw.isreload.Checked() {
+		} else if mw.isreload.Checked() && !originalSearch {
 			runSettingWd(settingWd, mw)
 		} else if len(transfer) == 0 {
 			walk.MsgBox(mw, "提示", "依赖文件被意外删除，需要重新加载", walk.MsgBoxIconWarning)
-			parse(mw, true)
+			GetTransfer()
 		}
 
+		mw.search(resultsTable, errsTable)
+
 		go func() {
+			if mw.searchScope.Text() == preSearchPaths[0] {
+				return
+			}
 			savePreSearchPath(mw)
 		}()
-		mw.search(resultsTable, errsTable)
 	})
 
 	mw.set.Clicked().Attach(func() {
@@ -322,7 +355,7 @@ func runSettingWd(settingWd *MySubWindow, mw *MyMainWindow) {
 				Layout: Grid{Columns: 10},
 				Children: []Widget{
 					CheckBox{
-						Text:     "是否带注释",
+						Text:     "带注释",
 						AssignTo: &settingWd.withComments,
 						OnClicked: func() {
 							isWithComments = settingWd.withComments.Checked() //默认没有点击，即默认不带注释
@@ -532,7 +565,8 @@ type MyMainWindow struct {
 	errLabel  *walk.Label
 	timeLabel *walk.Label
 
-	isreload *walk.CheckBox
+	isOriginal *walk.CheckBox
+	isreload   *walk.CheckBox
 
 	run  *walk.PushButton
 	set  *walk.PushButton
@@ -547,6 +581,7 @@ func (this *MyMainWindow) search(resultTable *ResultInfoModel, errsTable *ErrInf
 	startTime := time.Now()
 
 	result := Search_(this.searchScope.Text(), this.target.Text(), this.matchPattern, this)
+	//result := asyncSerach(this.searchScope.Text(), this.target.Text(), this.matchPattern)
 
 	this.numLabel.SetText("查询结果数量： " + strconv.Itoa(len(result.CallChain)))
 	this.errLabel.SetText("报错数量： " + strconv.Itoa(len(result.Errs)))
@@ -557,6 +592,35 @@ func (this *MyMainWindow) search(resultTable *ResultInfoModel, errsTable *ErrInf
 	errsTable.UpdateItems(result.Errs)
 }
 
+//
+//func (this *MyMainWindow) searchOrigin(resultTable *ResultInfoModel, errsTable *ErrInfoModel) {
+//	if IsValidPath(this.searchScope.Text()) == false {
+//		walk.MsgBox(this, "报错", "搜索路径不合法", walk.MsgBoxIconWarning)
+//		return
+//	}
+//	startTime := time.Now()
+//
+//	resultChan := make(chan *SearchResultInfo, 100)
+//	results := &SearchResultInfo{}
+//	go SearchOrigin_(this.searchScope.Text(), this.target.Text(), this.matchPattern, resultChan)
+//
+//	go func() {
+//		for ret := range resultChan {
+//			results.CallChain = append(results.CallChain, ret.CallChain...)
+//			results.Errs = append(results.Errs, ret.Errs...)
+//			results.TargetRowNums = append(results.TargetRowNums, ret.TargetRowNums...)
+//		}
+//	}()
+//
+//	this.numLabel.SetText("查询结果数量： " + strconv.Itoa(len(results.CallChain)))
+//	this.errLabel.SetText("报错数量： " + strconv.Itoa(len(results.Errs)))
+//	this.timeLabel.SetText("搜索总耗时： " + time.Since(startTime).String())
+//	LOG.Printf("search complete, results nums: %d, err nums: %d", len(results.CallChain), len(results.Errs))
+//
+//	resultTable.UpdateItems(results.CallChain, results.TargetRowNums)
+//	errsTable.UpdateItems(results.Errs)
+//}
+
 type ResultInfo struct {
 	callChain     string
 	targetRowNums string
@@ -564,7 +628,9 @@ type ResultInfo struct {
 
 type ResultInfoModel struct {
 	walk.SortedReflectTableModelBase
-	results []*ResultInfo
+	results    []*ResultInfo
+	sortOrder  walk.SortOrder
+	sortColumn int
 }
 
 var _ walk.ReflectTableModel = new(FileInfoModel)
@@ -579,6 +645,7 @@ func (m *ResultInfoModel) Items() interface{} {
 func (m *ResultInfoModel) RowCount() int {
 	return len(m.results)
 }
+
 func (m *ResultInfoModel) Value(row, col int) interface{} {
 	if col == 0 {
 		return m.results[row].callChain
@@ -586,6 +653,30 @@ func (m *ResultInfoModel) Value(row, col int) interface{} {
 		return m.results[row].targetRowNums
 	}
 	return nil
+}
+func (m *ResultInfoModel) Sort(col int, order walk.SortOrder) error {
+	m.sortColumn, m.sortOrder = col, order
+	sort.SliceStable(m.results, func(i, j int) bool {
+		a, b := m.results[i], m.results[j]
+		c := func(ls bool) bool {
+			if m.sortOrder == walk.SortAscending {
+				return ls
+			}
+			return !ls
+		}
+
+		switch m.sortColumn {
+		case 0:
+			return c(a.callChain < b.callChain)
+
+		case 1:
+			return c(a.targetRowNums < b.targetRowNums)
+		}
+
+		panic("unreachable")
+	})
+
+	return m.SorterBase.Sort(col, order)
 }
 func (m *ResultInfoModel) UpdateItems(callChains []string, rows []string) {
 	m.results = nil //清空之前的
