@@ -29,10 +29,9 @@ const (
 const PRE_SEARCHPATH_DOC string = "pre_search.txt"
 
 var (
-	historyTargetMutex sync.Mutex //
-	historySearchMutex sync.Mutex
-	isWithComments     bool = false //默认不带注释
-	originalSearch     bool = true  //默认搜索解析后的文件
+	historyTargetMutex sync.Mutex         //
+	isWithComments     bool       = false //默认不带注释
+	originalSearch     bool       = true  //默认搜索解析后的文件
 )
 
 // 日志
@@ -287,12 +286,10 @@ func main() {
 
 		mw.search(resultsTable, errsTable)
 
-		go func() {
-			if len(preSearchPaths) > 0 && mw.searchScope.Text() == preSearchPaths[0] {
-				return
-			}
-			savePreSearchPath(mw)
-		}()
+		if len(preSearchPaths) > 0 && mw.searchScope.Text() == preSearchPaths[0] {
+			return
+		}
+		savePreSearchPath(mw)
 	})
 
 	mw.set.Clicked().Attach(func() {
@@ -642,14 +639,18 @@ func (this *MyMainWindow) search(resultTable *ResultInfoModel, errsTable *ErrInf
 	result := Search_(this.searchScope.Text(), this.target.Text(), this.matchPattern, this)
 
 	if this.isduplicates.Checked() {
-		if len(result.CallChain) > 5000 {
-			walk.MsgBox(this, "警告", "结果数量过多，去重耗时严重，自动为您跳过", walk.MsgBoxIconWarning)
-			goto unDuplicate
-		}
-		result = duplicates(result)
+		result = duplicatesByTrie(result)
 	}
-unDuplicate:
-	//result = duplicatesByTrie(result)
+	//
+	//	if this.isduplicates.Checked() {
+	//		if len(result.CallChain) > 5000 {
+	//			walk.MsgBox(this, "警告", "结果数量过多，去重耗时严重，自动为您跳过", walk.MsgBoxIconWarning)
+	//			goto unDuplicate
+	//		}
+	//		result = duplicates(result)
+	//	}
+	//unDuplicate:
+
 	//result := asyncSerach(this.searchScope.Text(), this.target.Text(), this.matchPattern)
 
 	this.numLabel.SetText("查询结果数量： " + strconv.Itoa(len(result.CallChain)))
@@ -905,9 +906,6 @@ func saveOutputPath(settingWd *MySubWindow, mw *MyMainWindow) {
 }
 
 func savePreSearchPath(mw *MyMainWindow) {
-	historySearchMutex.Lock()
-	defer historySearchMutex.Unlock()
-
 	newSearchPath := mw.searchScope.Text()
 	LOG.Println("新增一条搜索路径记录: " + newSearchPath)
 	preSearchPaths = append([]string{newSearchPath}, preSearchPaths...)

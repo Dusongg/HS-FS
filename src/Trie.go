@@ -10,16 +10,19 @@ type trieNode struct {
 }
 
 type Trie struct {
-	allnode map[string]*trieNode
+	root *trieNode
 }
 
-func (t *Trie) Search(callChain string) bool {
-	funcs := strings.Split(callChain, "->")
-	node, exists := t.allnode[funcs[0]]
-	if !exists {
-		return false
+func reverse(slice []string) []string {
+	for i, j := 0, len(slice)-1; i < j; i, j = i+1, j-1 {
+		slice[i], slice[j] = slice[j], slice[i]
 	}
-	for _, f := range funcs[1:] {
+	return slice
+}
+func (t *Trie) Search(callChain string) bool {
+	funcs := reverse(strings.Split(callChain, "->"))
+	node := t.root
+	for _, f := range funcs {
 		if nextnode, exists := node.children[f]; exists {
 			node = nextnode
 		} else {
@@ -29,27 +32,23 @@ func (t *Trie) Search(callChain string) bool {
 	return true
 }
 func (t *Trie) Insert(callChain string) {
-	funcs := strings.Split(callChain, "->")
-	if _, exists := t.allnode[funcs[0]]; !exists {
-		t.allnode[funcs[0]] = &trieNode{make(map[string]*trieNode)}
-	}
-	curNode := t.allnode[funcs[0]]
-	for _, f := range funcs[1:] {
-		if _, exists := curNode.children[f]; !exists {
-			curNode.children[f] = &trieNode{make(map[string]*trieNode)}
+	funcs := reverse(strings.Split(callChain, "->"))
+	node := t.root
+	for _, f := range funcs {
+		if _, exists := node.children[f]; !exists {
+			node.children[f] = &trieNode{make(map[string]*trieNode)}
 		}
-		curNode = curNode.children[f]
-		t.allnode[f] = curNode
+		node = node.children[f]
 	}
 }
 
 func duplicatesByTrie(input *SearchResultInfo) *SearchResultInfo {
-	trie := &Trie{make(map[string]*trieNode)}
+	trie := &Trie{&trieNode{make(map[string]*trieNode)}}
 
-	sort.Slice(input.CallChain, func(i, j int) bool {
+	sort.SliceStable(input.CallChain, func(i, j int) bool {
 		return len(input.CallChain[i]) > len(input.CallChain[j])
 	})
-	sort.Slice(input.TargetRowNums, func(i, j int) bool {
+	sort.SliceStable(input.TargetRowNums, func(i, j int) bool {
 		return len(input.CallChain[i]) > len(input.CallChain[j])
 	})
 	output := &SearchResultInfo{Errs: input.Errs}
