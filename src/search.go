@@ -189,7 +189,7 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 			isFound = true
 			ansLines = append(ansLines, lineNumber)
 			if mode == REGEX_MATCH {
-				foundString = regex.FindString(line)
+				foundString += fmt.Sprintf("{%s}", regex.FindString(line))
 			}
 		}
 
@@ -223,7 +223,7 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 		if mode == EXACT_MATCH {
 			result.CallChain = append(result.CallChain, fmt.Sprintf("%s-%s", transfer[funcName].FunctionNum, funcName))
 		} else if mode == REGEX_MATCH {
-			result.CallChain = append(result.CallChain, fmt.Sprintf("%s::%s", funcName, foundString))
+			result.CallChain = append(result.CallChain, fmt.Sprintf("%s-%s::%s", transfer[funcName].FunctionNum, funcName, foundString))
 		}
 		result.TargetRowNums = append(result.TargetRowNums, row)
 	}

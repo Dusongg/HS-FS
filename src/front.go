@@ -275,8 +275,12 @@ func main() {
 		} else if files, _ := os.ReadDir(outputDir); len(files) == 0 && !originalSearch {
 			walk.MsgBox(mw, "提示", "output文件夹为空，正在为您自动解析", walk.MsgBoxIconWarning)
 			parse(mw, false)
-		} else if mw.isreload.Checked() && !originalSearch {
-			runSettingWd(settingWd, mw)
+		} else if mw.isreload.Checked() {
+			if !originalSearch {
+				runSettingWd(settingWd, mw)
+			} else {
+				GetTransfer()
+			}
 		} else if len(transfer) == 0 {
 			GetTransfer()
 		}
@@ -656,10 +660,10 @@ unDuplicate:
 	resultTable.UpdateItems(result.CallChain, result.TargetRowNums)
 	errsTable.UpdateItems(result.Errs)
 
-	if this.exactMatchRB.Checked() {
+	if this.export.Checked() {
 		walk.MsgBox(this, "提示", "搜索结果已导出到："+filepath.Join(ROOT_DIR, "result.txt"), walk.MsgBoxIconInformation)
 		go func() {
-			file, err := os.OpenFile(filepath.Join(ROOT_DIR, "result.txt"), os.O_CREATE|os.O_RDWR, 0666)
+			file, err := os.OpenFile(filepath.Join(ROOT_DIR, "result.txt"), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
 			defer file.Close()
 			if err != nil {
 				ERROR.Println("导出结果错误：", err)
