@@ -221,7 +221,7 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 			row += fmt.Sprintf("<%d>", line)
 		}
 		if mode == EXACT_MATCH {
-			result.CallChain = append(result.CallChain, funcName)
+			result.CallChain = append(result.CallChain, fmt.Sprintf("%s-%s", transfer[funcName].FunctionNum, funcName))
 		} else if mode == REGEX_MATCH {
 			result.CallChain = append(result.CallChain, fmt.Sprintf("%s::%s", funcName, foundString))
 		}
@@ -255,7 +255,7 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 				FATAL.Fatalf("程序内部错误，callchainSize:%d, tartgetrownumsSize: %d", len(rets.CallChain), len(rets.TargetRowNums))
 			}
 			for i, callChain := range rets.CallChain {
-				result.CallChain = append(result.CallChain, fmt.Sprintf("%s<%d>->%s", funcName, firstMatchesLines[id], callChain))
+				result.CallChain = append(result.CallChain, fmt.Sprintf("%s-%s<%d>->%s", transfer[funcName].FunctionNum, funcName, firstMatchesLines[id], callChain))
 				result.TargetRowNums = append(result.TargetRowNums, rets.TargetRowNums[i])
 			}
 			bmp.Clear(tv.SerialNumber)

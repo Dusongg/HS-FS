@@ -16,6 +16,7 @@ import (
 type transferValue struct {
 	SerialNumber int
 	OriginPath   string
+	FunctionNum  string
 }
 
 const (
@@ -110,6 +111,7 @@ func Parse_(parseWd *ProcessWd, total int) {
 				transfer[fmt.Sprintf("[%s]", baseWithoutExt)] = transferValue{
 					SerialNumber: serialNum,
 					OriginPath:   path,
+					FunctionNum:  hsdoc.Basic.InnerBasic.ObjectId,
 				}
 				parseWd.Synchronize(func() {
 					parseWd.progressBar.SetValue(serialNum)
@@ -140,9 +142,16 @@ func Parse_(parseWd *ProcessWd, total int) {
 	}
 }
 
+type InnerBasic struct {
+	ObjectId string `xml:"objectId,attr"`
+}
+type OuterBasic struct {
+	InnerBasic InnerBasic `xml:"basic"`
+}
 type Hsdoc struct {
-	XMLName xml.Name `xml:"hsdoc"`
-	Code    string   `xml:"code"`
+	XMLName xml.Name   `xml:"hsdoc"`
+	Code    string     `xml:"code"`
+	Basic   OuterBasic `xml:"basic"`
 }
 
 func clearOutputDir(cleanWd *ProcessWd, total int) error {
@@ -395,11 +404,24 @@ func walkDir(dir string, n *sync.WaitGroup) {
 			n.Add(1)
 			go walkDir(path, n)
 		} else {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				ERROR.Printf("failed to read file %s: %v\n", path, err)
+				continue
+			}
+			var hsdoc Hsdoc
+			err = xml.Unmarshal(data, &hsdoc)
+			if err != nil {
+				ERROR.Printf("failed to unmarshal XML from file %s: %v\n", path, err)
+				continue
+			}
+
 			baseWithoutExt := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 			mutex.Lock()
 			transfer[fmt.Sprintf("[%s]", baseWithoutExt)] = transferValue{
 				SerialNumber: gSerialNum,
 				OriginPath:   path,
+				FunctionNum:  hsdoc.Basic.InnerBasic.ObjectId,
 			}
 			gSerialNum++
 			mutex.Unlock()

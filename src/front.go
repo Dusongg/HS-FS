@@ -216,6 +216,10 @@ func main() {
 						Text:     "去重",
 						AssignTo: &mw.isduplicates,
 					},
+					CheckBox{
+						Text:     "导出结果",
+						AssignTo: &mw.export,
+					},
 
 					PushButton{AssignTo: &mw.run, Text: "Run"},
 					PushButton{AssignTo: &mw.set, Text: "Settings"},
@@ -617,6 +621,7 @@ type MyMainWindow struct {
 	isOriginal   *walk.CheckBox
 	isreload     *walk.CheckBox
 	isduplicates *walk.CheckBox
+	export       *walk.CheckBox
 
 	run  *walk.PushButton
 	set  *walk.PushButton
@@ -650,6 +655,23 @@ unDuplicate:
 
 	resultTable.UpdateItems(result.CallChain, result.TargetRowNums)
 	errsTable.UpdateItems(result.Errs)
+
+	if this.exactMatchRB.Checked() {
+		walk.MsgBox(this, "提示", "搜索结果已导出到："+filepath.Join(ROOT_DIR, "result.txt"), walk.MsgBoxIconInformation)
+		go func() {
+			file, err := os.OpenFile(filepath.Join(ROOT_DIR, "result.txt"), os.O_CREATE|os.O_RDWR, 0666)
+			defer file.Close()
+			if err != nil {
+				ERROR.Println("导出结果错误：", err)
+			}
+			for _, line := range result.CallChain {
+				_, err := file.WriteString(line + "\n")
+				if err != nil {
+					ERROR.Println("写入结果到文件错误：", err)
+				}
+			}
+		}()
+	}
 }
 
 func duplicates(input *SearchResultInfo) *SearchResultInfo {
