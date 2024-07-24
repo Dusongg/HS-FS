@@ -32,7 +32,7 @@ var (
 	historyTargetMutex sync.Mutex //
 	historySearchMutex sync.Mutex
 	isWithComments     bool = false //默认不带注释
-	originalSearch     bool = false //默认搜索解析后的文件
+	originalSearch     bool = true  //默认搜索解析后的文件
 )
 
 // 日志
@@ -68,25 +68,6 @@ func main() {
 			mw.searchScope.SetText(strings.Join(files, "\r\n"))
 		},
 		OnSizeChanged: func() { //打开窗口即加载
-			if len(preTargets) > 5 {
-				preTargets = preTargets[:5]
-			}
-			if len(preTargets) != 0 {
-				mw.target.SetText(preTargets[0])
-			}
-			mw.target.SetModel(preTargets)
-
-			if len(preSearchPaths) > 5 {
-				preSearchPaths = preSearchPaths[:5]
-			}
-			if len(preSearchPaths) != 0 {
-				mw.searchScope.SetText(preSearchPaths[0])
-			}
-			mw.searchScope.SetModel(preSearchPaths)
-
-			mw.exactMatchRB.SetChecked(true)
-			mw.matchPattern = EXACT_MATCH
-
 		},
 		Children: []Widget{
 			//第一行：搜索路径
@@ -223,12 +204,17 @@ func main() {
 								originalSearch = true
 							} else {
 								originalSearch = false
+
 							}
 						},
 					},
 					CheckBox{
 						Text:     "重新解析",
 						AssignTo: &mw.isreload,
+					},
+					CheckBox{
+						Text:     "去重",
+						AssignTo: &mw.isduplicates,
 					},
 
 					PushButton{AssignTo: &mw.run, Text: "Run"},
@@ -240,6 +226,8 @@ func main() {
 	}.Create()); err != nil {
 		return
 	}
+
+	initOpenWd(mw)
 
 	mw.exactMatchRB.Clicked().Attach(func() {
 		go func() {
@@ -265,27 +253,34 @@ func main() {
 			return
 		}
 
+		resultsTable.UpdateItems(nil, nil)
+		errsTable.UpdateItems(nil)
+
 		if outputDir == "" && !originalSearch {
 			walk.MsgBox(mw, "提示", "output文件路径错误，请重新设置（默认：D:\\HS-FS\\output）", walk.MsgBoxIconWarning)
 			runSettingWd(settingWd, mw)
 		}
 		if parseDir == "" {
 			walk.MsgBox(mw, "提示", "请先设置待解析文件的路径(搜索路径)", walk.MsgBoxIconWarning)
-			runSettingWd(settingWd, mw)
+			if originalSearch {
+				runSettingWdForOrigin(settingWd, mw)
+				GetTransfer()
+			} else {
+				runSettingWd(settingWd, mw)
+			}
 		} else if files, _ := os.ReadDir(outputDir); len(files) == 0 && !originalSearch {
 			walk.MsgBox(mw, "提示", "output文件夹为空，正在为您自动解析", walk.MsgBoxIconWarning)
 			parse(mw, false)
 		} else if mw.isreload.Checked() && !originalSearch {
 			runSettingWd(settingWd, mw)
 		} else if len(transfer) == 0 {
-			walk.MsgBox(mw, "提示", "依赖文件被意外删除，需要重新加载", walk.MsgBoxIconWarning)
 			GetTransfer()
 		}
 
 		mw.search(resultsTable, errsTable)
 
 		go func() {
-			if mw.searchScope.Text() == preSearchPaths[0] {
+			if len(preSearchPaths) > 0 && mw.searchScope.Text() == preSearchPaths[0] {
 				return
 			}
 			savePreSearchPath(mw)
@@ -302,6 +297,57 @@ func main() {
 
 	mw.Run()
 
+}
+
+func runSettingWdForOrigin(settingWd *MySubWindow, mw *MyMainWindow) {
+	if err := (Dialog{
+		AssignTo: &settingWd.Dialog,
+		MinSize:  Size{Width: 700, Height: 200},
+		Layout:   VBox{},
+		Children: []Widget{
+			Composite{
+				Layout: Grid{Columns: 10},
+				Children: []Widget{
+					Label{Text: "待解析的文件路径(搜索范围)"},
+					LineEdit{
+						Text:     parseDir,
+						AssignTo: &settingWd.parsePathEdit,
+						MaxSize:  Size{Width: 450, Height: 20},
+					},
+					PushButton{
+						Text: "Browser",
+						OnClicked: func() {
+							browser(settingWd)
+						},
+					},
+				},
+			},
+
+			Composite{
+				Layout: Grid{Columns: 10},
+				Children: []Widget{
+					PushButton{
+						Text: "OK",
+						OnClicked: func() {
+							saveParsePath(settingWd, mw)
+							settingWd.Accept()
+						},
+					},
+					PushButton{
+						Text: "Quit",
+						OnClicked: func() {
+							settingWd.Accept()
+
+						},
+					},
+				},
+			},
+		},
+	}.Create(mw)); err != nil {
+		return
+	}
+
+	settingWd.Run()
 }
 
 // runSettingWd --> parse(清除文件与json, 加载进度条) --> Parse_
@@ -366,6 +412,9 @@ func runSettingWd(settingWd *MySubWindow, mw *MyMainWindow) {
 					PushButton{
 						Text: "生成文件",
 						OnClicked: func() {
+							if parseDir == "" {
+								saveParsePath(settingWd, mw)
+							}
 							parse(mw, true)
 							settingWd.Accept()
 						},
@@ -565,8 +614,9 @@ type MyMainWindow struct {
 	errLabel  *walk.Label
 	timeLabel *walk.Label
 
-	isOriginal *walk.CheckBox
-	isreload   *walk.CheckBox
+	isOriginal   *walk.CheckBox
+	isreload     *walk.CheckBox
+	isduplicates *walk.CheckBox
 
 	run  *walk.PushButton
 	set  *walk.PushButton
@@ -581,6 +631,16 @@ func (this *MyMainWindow) search(resultTable *ResultInfoModel, errsTable *ErrInf
 	startTime := time.Now()
 
 	result := Search_(this.searchScope.Text(), this.target.Text(), this.matchPattern, this)
+
+	if this.isduplicates.Checked() {
+		if len(result.CallChain) > 5000 {
+			walk.MsgBox(this, "警告", "结果数量过多，去重耗时严重，自动为您跳过", walk.MsgBoxIconWarning)
+			goto unDuplicate
+		}
+		result = duplicates(result)
+	}
+unDuplicate:
+	//result = duplicatesByTrie(result)
 	//result := asyncSerach(this.searchScope.Text(), this.target.Text(), this.matchPattern)
 
 	this.numLabel.SetText("查询结果数量： " + strconv.Itoa(len(result.CallChain)))
@@ -590,6 +650,32 @@ func (this *MyMainWindow) search(resultTable *ResultInfoModel, errsTable *ErrInf
 
 	resultTable.UpdateItems(result.CallChain, result.TargetRowNums)
 	errsTable.UpdateItems(result.Errs)
+}
+
+func duplicates(input *SearchResultInfo) *SearchResultInfo {
+	sort.Slice(input.CallChain, func(i, j int) bool {
+		return len(input.CallChain[i]) > len(input.CallChain[j])
+	})
+	sort.Slice(input.TargetRowNums, func(i, j int) bool {
+		return len(input.CallChain[i]) > len(input.CallChain[j])
+	})
+	output := &SearchResultInfo{Errs: input.Errs}
+	len := len(input.CallChain)
+
+	for i := 0; i < len; i++ {
+		isSubString := false
+		for _, str := range output.CallChain {
+			if strings.Contains(str, input.CallChain[i]) {
+				isSubString = true
+				break
+			}
+		}
+		if !isSubString {
+			output.CallChain = append(output.CallChain, input.CallChain[i])
+			output.TargetRowNums = append(output.TargetRowNums, input.TargetRowNums[i])
+		}
+	}
+	return output
 }
 
 //
@@ -962,4 +1048,27 @@ func OpenFile(mw *MyMainWindow, targetFile string) {
 		return
 	}
 	openFileWD.Run()
+}
+
+func initOpenWd(mw *MyMainWindow) {
+	if len(preTargets) > 5 {
+		preTargets = preTargets[:5]
+	}
+	if len(preTargets) != 0 {
+		mw.target.SetText(preTargets[0])
+	}
+	mw.target.SetModel(preTargets)
+
+	if len(preSearchPaths) > 5 {
+		preSearchPaths = preSearchPaths[:5]
+	}
+	if len(preSearchPaths) != 0 {
+		mw.searchScope.SetText(preSearchPaths[0])
+	}
+	mw.searchScope.SetModel(preSearchPaths)
+
+	mw.exactMatchRB.SetChecked(true)
+	mw.isOriginal.SetChecked(true)
+	originalSearch = true
+	mw.matchPattern = EXACT_MATCH
 }

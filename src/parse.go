@@ -69,7 +69,7 @@ func Parse_(parseWd *ProcessWd, total int) {
 		//if d, _ := os.Stat(path); !d.IsDir() {
 		//	//报错
 		//}
-		LOG.Println("start prasing:   " + dir)
+		LOG.Println("start parsing:   " + dir)
 		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err

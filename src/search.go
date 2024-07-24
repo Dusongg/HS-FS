@@ -103,8 +103,10 @@ func directoryDFS(directory string, target string, mode int, bmp *Bitmap) *Searc
 			//输入类似："D:\1_hundsun代码\DevCodes\经纪业务运营平台V21\业务逻辑\存管\UFT接口管理\服务\LS_UFT接口管理_UFT系统委托同步结果查询.service_design"
 			//添加文件目录
 			funcName := fmt.Sprintf("[%s]", strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
-			path = outputDir + "/" + funcName[1:len(funcName)-1] + ".code.txt"
-			//for _, result := range file_dfs(intput_filename, target, mode) {
+			if !originalSearch {
+				path = outputDir + "/" + funcName[1:len(funcName)-1] + ".code.txt"
+			}
+			//for _, result := range file_dfs(input_filename, target, mode) {
 			//	results = append(results, strings.TrimSuffix(path, filepath.Base(path)) + ": " + result)
 			//}
 
@@ -191,10 +193,12 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 			}
 		}
 
-		submatch := funcRegex.FindString(line)
 		if originalSearch && strings.HasPrefix(line, "//") {
-			goto jump
+			lineNumber++
+			continue
 		}
+		submatch := funcRegex.FindString(line)
+
 		//考虑每一行只有一个[AS|AF|AP|LF|LS]
 		if submatch != "" && !seen[submatch] {
 
@@ -202,7 +206,6 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 			firstMatchesLines = append(firstMatchesLines, lineNumber)
 			matches = append(matches, submatch)
 		}
-	jump:
 		//TODO考虑每一行有多个[AS|AF|AP|LF|LS]
 		//submatches := M_regex.FindAllString(line, -1)
 		//if submatches != nil {
@@ -252,7 +255,7 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 				FATAL.Fatalf("程序内部错误，callchainSize:%d, tartgetrownumsSize: %d", len(rets.CallChain), len(rets.TargetRowNums))
 			}
 			for i, callChain := range rets.CallChain {
-				result.CallChain = append(result.CallChain, funcName+" -> "+callChain)
+				result.CallChain = append(result.CallChain, fmt.Sprintf("%s<%d>->%s", funcName, firstMatchesLines[id], callChain))
 				result.TargetRowNums = append(result.TargetRowNums, rets.TargetRowNums[i])
 			}
 			bmp.Clear(tv.SerialNumber)
@@ -300,7 +303,7 @@ func fileDFS(_filepath string, target string, mode int, bmp *Bitmap) *SearchResu
 //	n.Wait()
 //	return results
 //}
-//
+
 //func walkDirSearch(dir string, target string, mode int, n *sync.WaitGroup, resultChan chan *SearchResultInfo) {
 //	defer n.Done()
 //	for _, entry := range direntsSearch(dir) {
