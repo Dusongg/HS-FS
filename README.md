@@ -1,3 +1,13 @@
+> - language: go1.22.5 windows/**amd64**
+>
+> - IDE：Goland
+>
+> - lib：
+>   - https://github.com/lxn/walk
+>   - https://github.com/akavel/rsrc
+>
+> - OS：Windows 
+
 # CookBook
 
 共两种搜索模式：
