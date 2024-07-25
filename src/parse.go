@@ -10,34 +10,49 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type transferValue struct {
 	SerialNumber int
 	OriginPath   string
+	FunctionNum  string
 }
 
-const ROOT_DIR string = "D:\\HS-FS"
-const OUTPUTDIR_DOC string = "outputdir.txt"
-const PARSEDIR_DOC string = "parse.txt"
-const PRE_TARGET_DOC string = "pre_target.txt"
-const transferFile string = "D:\\HS-FS\\transfer.json"
+const (
+	ROOT_DIR       string = "D:\\HS-FS"
+	OUTPUTDIR_DOC  string = "outputdir.txt"
+	PARSEDIR_DOC   string = "parse.txt"
+	PRE_TARGET_DOC string = "pre_target.txt"
+	transferFile   string = "D:\\HS-FS\\transfer.json"
+)
 
-var preSearchPath string
-var outputDir string
-var parseDir string
+var (
+	preSearchPaths []string
+	preTargets     []string
+	outputDir      string
+	parseDir       string
+	transfer       = make(map[string]transferValue)
+)
 
 func init() {
 	if _, err := os.Stat(ROOT_DIR); os.IsNotExist(err) {
 		err := os.Mkdir(ROOT_DIR, 0755)
 		if err != nil {
-			LOG.Printf("failed to create output directory: %v", err)
+			ERROR.Printf("failed to create output directory: %v\n", err)
 		}
 	}
+	CreateOrLoadPreSearchDir()
+	CreateOrLoadPreTarget()
 	CreateOrLoadOutputDir()
 	CreateOrLoadParseDir()
-	CreateOrLoadPreSearchDir()
 
+	LOG.Println("Initializing transfer")
+	err := loadTransferFromFile() //from parse.go  ,最开始无法加载
+	if err != nil {
+		ERROR.Printf("load transferfile err: %v\n", err)
+	}
+	LOG.Printf("transfer size :%d\n", len(transfer))
 }
 
 func Parse_(parseWd *ProcessWd, total int) {
@@ -55,7 +70,7 @@ func Parse_(parseWd *ProcessWd, total int) {
 		//if d, _ := os.Stat(path); !d.IsDir() {
 		//	//报错
 		//}
-		LOG.Println("start prasing:   " + dir)
+		LOG.Println("start parsing:   " + dir)
 		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
@@ -65,6 +80,7 @@ func Parse_(parseWd *ProcessWd, total int) {
 			}
 			if !info.IsDir() {
 				data, err := os.ReadFile(path)
+
 				if err != nil {
 					return fmt.Errorf("failed to read file %s: %v", path, err)
 				}
@@ -72,10 +88,14 @@ func Parse_(parseWd *ProcessWd, total int) {
 				var hsdoc Hsdoc
 				err = xml.Unmarshal(data, &hsdoc)
 				if err != nil {
-					return fmt.Errorf("failed to unmarshal XML from file %s: %v", path, err)
+					ERROR.Printf("failed to unmarshal XML from file %s: %v\n", path, err)
+					return filepath.SkipDir
 				}
 
-				codeContent := filterCommentedCode(hsdoc.Code) //去注释
+				codeContent := hsdoc.Code
+				if !isWithComments {
+					codeContent = filterCommentedCode(hsdoc.Code) //去注释
+				}
 
 				if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 					err = os.MkdirAll(outputDir, 0755)
@@ -91,10 +111,14 @@ func Parse_(parseWd *ProcessWd, total int) {
 				transfer[fmt.Sprintf("[%s]", baseWithoutExt)] = transferValue{
 					SerialNumber: serialNum,
 					OriginPath:   path,
+					FunctionNum:  hsdoc.Basic.InnerBasic.ObjectId,
 				}
 				parseWd.Synchronize(func() {
 					parseWd.progressBar.SetValue(serialNum)
-					parseWd.schedule.SetText(fmt.Sprintf("%.2f%%", float64(serialNum)/float64(total)*100))
+					err := parseWd.schedule.SetText(fmt.Sprintf("%.2f%%", float64(serialNum)/float64(total)*100))
+					if err != nil {
+						ERROR.Println(err)
+					}
 				})
 				serialNum++
 
@@ -109,17 +133,25 @@ func Parse_(parseWd *ProcessWd, total int) {
 			}
 			return nil
 		})
-		LOG.Println("directory:  " + dir + "   total: " + strconv.Itoa(num))
 		if err != nil {
-			LOG.Printf("end Error: %v\n", err)
+			ERROR.Printf("end Error: %v\n", err)
+			return
 		}
+		LOG.Println("directory:  " + dir + "   total: " + strconv.Itoa(num))
 
 	}
 }
 
+type InnerBasic struct {
+	ObjectId string `xml:"objectId,attr"`
+}
+type OuterBasic struct {
+	InnerBasic InnerBasic `xml:"basic"`
+}
 type Hsdoc struct {
-	XMLName xml.Name `xml:"hsdoc"`
-	Code    string   `xml:"code"`
+	XMLName xml.Name   `xml:"hsdoc"`
+	Code    string     `xml:"code"`
+	Basic   OuterBasic `xml:"basic"`
 }
 
 func clearOutputDir(cleanWd *ProcessWd, total int) error {
@@ -138,7 +170,10 @@ func clearOutputDir(cleanWd *ProcessWd, total int) error {
 		LOG.Printf("remove file %d\n", i)
 		cleanWd.Synchronize(func() {
 			cleanWd.progressBar.SetValue(i)
-			cleanWd.schedule.SetText(fmt.Sprintf("%.2f%%", float64(i+1)/float64(total)*100))
+			err := cleanWd.schedule.SetText(fmt.Sprintf("%.2f%%", float64(i+1)/float64(total)*100))
+			if err != nil {
+				ERROR.Println(err)
+			}
 		})
 	}
 	err = os.RemoveAll(outputDir)
@@ -201,7 +236,11 @@ func CreateOrLoadOutputDir() {
 			LOG.Printf("failed to create output_path file: %v", err)
 		}
 		defer file.Close()
-		file.WriteString("D:\\HS-FS\\output")
+		_, err = file.WriteString("D:\\HS-FS\\output")
+		if err != nil {
+			ERROR.Println(err)
+		}
+
 	}
 
 	file, err := os.OpenFile(filepath.Join(ROOT_DIR, OUTPUTDIR_DOC), os.O_RDWR|os.O_CREATE, 0644)
@@ -229,14 +268,14 @@ func CreateOrLoadParseDir() {
 	if _, err := os.Stat(parseSavePath); os.IsNotExist(err) {
 		file, err := os.Create(parseSavePath)
 		if err != nil {
-			LOG.Printf("failed to create parse_path file: %v", err)
+			ERROR.Printf("failed to create parse_path file: %v\n", err)
 		}
 
 		defer file.Close()
 	}
 	file, err := os.Open(filepath.Join(ROOT_DIR, PARSEDIR_DOC))
 	if err != nil {
-		LOG.Printf("failed to open file: %v", err)
+		ERROR.Printf("failed to open file: %v\n", err)
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
@@ -252,20 +291,20 @@ func CreateOrLoadPreSearchDir() {
 	if _, err := os.Stat(presearchSavePath); os.IsNotExist(err) {
 		file, err := os.Create(presearchSavePath)
 		if err != nil {
-			LOG.Printf("failed to create pre_search_path file: %v", err)
+			ERROR.Printf("failed to create pre_search_path file: %v\n", err)
 		}
 		defer file.Close()
 	}
 	file, err := os.Open(filepath.Join(ROOT_DIR, PRE_SEARCHPATH_DOC))
 	if err != nil {
-		LOG.Printf("failed to open file: %v", err)
+		ERROR.Printf("failed to open file: %v\n", err)
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		preSearchPath = scanner.Text()
+		preSearchPaths = append(preSearchPaths, scanner.Text())
 	}
-	LOG.Println("previous search path:", preSearchPath)
+	LOG.Println("previous search path:", preSearchPaths)
 }
 
 func CreateOrLoadPreTarget() {
@@ -273,13 +312,13 @@ func CreateOrLoadPreTarget() {
 	if _, err := os.Stat(pretargetSavePath); os.IsNotExist(err) {
 		file, err := os.Create(pretargetSavePath)
 		if err != nil {
-			LOG.Printf("failed to create pre_search_path file: %v", err)
+			ERROR.Printf("failed to create pre_search_path file: %v\n", err)
 		}
 		defer file.Close()
 	}
 	file, err := os.Open(filepath.Join(ROOT_DIR, PRE_TARGET_DOC))
 	if err != nil {
-		LOG.Printf("failed to open file: %v", err)
+		ERROR.Printf("failed to open file: %v\n", err)
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
@@ -287,4 +326,116 @@ func CreateOrLoadPreTarget() {
 		preTargets = append(preTargets, scanner.Text())
 	}
 	LOG.Println("previous targets:", preTargets)
+}
+
+//func GetTransfer() {
+//	serialNum := 0
+//	dirs := strings.Split(parseDir, ",") //bug:路径名带有,
+//	for _, dir := range dirs {
+//		LOG.Println(dir)
+//	}
+//	for _, dir := range dirs {
+//		dir = addEscapeBackslash(dir) //转义
+//		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+//			if err != nil {
+//				return err
+//			}
+//			if info.IsDir() && strings.HasPrefix(info.Name(), ".") {
+//				return filepath.SkipDir // 跳过整个目录
+//			}
+//			if !info.IsDir() {
+//				baseWithoutExt := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+//				transfer[fmt.Sprintf("[%s]", baseWithoutExt)] = transferValue{
+//					SerialNumber: serialNum,
+//					OriginPath:   path,
+//				}
+//				serialNum++
+//			}
+//			return nil
+//		})
+//		if err != nil {
+//			ERROR.Printf("end Error: %v\n", err)
+//			return
+//		}
+//		transferJson, err := json.Marshal(transfer)
+//		if err != nil {
+//			ERROR.Println(err)
+//			return
+//		}
+//		err = os.WriteFile(transferFile, transferJson, 0644)
+//		if err != nil {
+//			ERROR.Println(err)
+//		}
+//	}
+//}
+
+var sema = make(chan struct{}, 20)
+var gSerialNum = 0
+var mutex sync.Mutex
+
+func GetTransfer() {
+	var n sync.WaitGroup
+	dirs := strings.Split(parseDir, ",")
+	for _, dir := range dirs {
+		dir = addEscapeBackslash(dir)
+		n.Add(1)
+		go walkDir(dir, &n)
+	}
+	n.Wait()
+	transferJson, err := json.Marshal(transfer)
+	if err != nil {
+		ERROR.Println(err)
+		return
+	}
+	err = os.WriteFile(transferFile, transferJson, 0644)
+	if err != nil {
+		ERROR.Println(err)
+	}
+}
+
+func walkDir(dir string, n *sync.WaitGroup) {
+	defer n.Done()
+	for _, entry := range dirents(dir) {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		if entry.IsDir() {
+			n.Add(1)
+			go walkDir(path, n)
+		} else {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				ERROR.Printf("failed to read file %s: %v\n", path, err)
+				continue
+			}
+			var hsdoc Hsdoc
+			err = xml.Unmarshal(data, &hsdoc)
+			if err != nil {
+				ERROR.Printf("failed to unmarshal XML from file %s: %v\n", path, err)
+				continue
+			}
+
+			baseWithoutExt := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+			mutex.Lock()
+			transfer[fmt.Sprintf("[%s]", baseWithoutExt)] = transferValue{
+				SerialNumber: gSerialNum,
+				OriginPath:   path,
+				FunctionNum:  hsdoc.Basic.InnerBasic.ObjectId,
+			}
+			gSerialNum++
+			mutex.Unlock()
+		}
+	}
+}
+
+func dirents(dir string) []os.DirEntry {
+	sema <- struct{}{}
+	defer func() { <-sema }()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "du1: %v\n", err)
+		return nil
+	}
+	return entries
 }

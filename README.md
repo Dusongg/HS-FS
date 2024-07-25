@@ -1,79 +1,126 @@
 # CookBook
 
-## 1 预处理文件
+共两种搜索模式：
 
-### 1.1 Parse
-
-1. 点击Parse，打开预处理菜单，(预处理完的文件放在output目录下，该目录位于在HS_FS文件目录下)
-
-![image-20240717155105554](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717155105554.png)
-
-- Reload：清空output文件夹，重新加载
-- Append：向output文件夹里新增文件
-
-2. 输入待处理的文件或目录
-
-### 1.2 自定义输出文件路径
-
-1. 默认输出路径
-
-![image-20240717155019007](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717155019007.png)
-
-2. 自定义输出路径
-
-![image-20240717155247789](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717155247789.png)
-
-该路径会保存到指定文件（outputdir.txt），用于后续寻找
-
-![image-20240717155336156](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717155336156.png)
-
-### 1.3（可选）Browser使用说明
-
-![image-20240717101417481](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717101417481.png)
-
-> [!NOTE]
->
-> 预处理任务耗时较长，请耐心等待
+1. 原文本搜索：搜索的文件为xml格式的文本文件，且搜索内容包含注释
+   - 搜索速度：单次搜索与第二种相比较慢
+2. 处理后的文本搜索：处理后的文本仅包含xml文件中code标签部分，且可选择是否带注释
+   - 搜索速度：最开始需要1min时间处理，之后单次搜索与第一种相比较快
 
 
 
-## 2 搜索
+一次搜索的大概流程（以搜索关键字`hs_strcpy`为例）
 
-1. 输入路径与搜索目标（拖拽/输入/点击Browser浏览）
-
-![image-20240717100848585](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717100848585.png)
-
-2. 选择匹配模式（正则匹配功能尚未实现）
-3. 点击Run运行
-
-![image-20240717102137680](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717102137680.png)
-
-> [!CAUTION]
->
-> 目标所在行展示的是调用链的最后一个结点，且为预处理后的文件(位于output目录)中的目标所在行数
+![image-20240725092536621](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240725092536621.png)
 
 
 
-## 3 其他功能与说明
+# 1 原文本搜索
 
-### 3.1单击搜索结果打开调用链的最后一个结点所对应的文件
+## 1.1搜索步骤
 
-![image-20240717102523850](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240717102523850.png)
+> 原文本搜索意味着：搜索的文件为xml格式的文本文件，且搜索内容包含注释
 
-### 3.2 其他说明
+![image-20240724164235239](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724164235239.png)
 
-- 搜索采用单线程的dfs，效率一般，若遇到搜索耗时较多的情况可分成多个子目录依次搜索
-  - 如”DevCodes\经纪业务运营平台V21\业务逻辑\债券“该目录耗时较长，可改为"DevCodes\经纪业务运营平台V21\业务逻辑\债券\债券交易"等其子目录依次搜索
-- 搜索过程中处理了==函数循环调用==与==调用函数文件不存在==问题，将其以报错形式展示在界面的报错框中
-- 对于一个文件的其中一行搜索，只考虑了一行内仅有一个[AF]/[AS]/[AP]/[LS]/[LF]的情况
+此时看到弹窗
+
+![image-20240724164335170](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724164335170.png)
+
+点击确定，出现下面窗口，可点击Browser浏览并输入本地的==业务逻辑==和==原子==文件所在目录
+
+![image-20240724164356554](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724164356554.png)
+
+例如：
+
+![image-20240724164621392](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724164621392.png)
+
+输入完成后点击OK按钮，等待0-3秒结果会展示出来
+
+![image-20240724164730813](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724164730813.png)
+
+## 1.2 原文本搜索下的重新解析按钮
+
+业务逻辑和原子两大文件中有文件的增删改动时（文件内容改动不影响），需要点击重新加载按钮，然后再点击Run运行，在这之后如果没有增删改动则不需要重复点击
+
+![image-20240724165248196](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724165248196.png)
+
+# 2 处理后的文本搜索
+
+> 处理后的文本仅包含xml文件中code标签部分，且可选择是否带注释
+
+## 2.1 搜索步骤
+
+![image-20240724165617207](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724165617207.png)
+
+点击生成文件之后会显示进度条
+
+![image-20240724165701844](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724165701844.png)
+
+完成后，点击Run，得到如下结果
+
+![image-20240724165804498](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724165804498.png)
+
+## 2.2 处理后文本搜索下的重新解析按钮
+
+业务逻辑和原子两大文件中有文件的增删改动时（文件内容改动不影响），需要点击重新加载按钮，然后再点击Run运行，在这之后如果没有增删改动则不需要重复点击
+
+![image-20240724170035091](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724170035091.png)
+
+点击后出现设置界面，再次点击生成文件即可
+
+![image-20240724170016833](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724170016833.png)
 
 
 
-## 4 程序后续优化与设计
+# 3 其他功能
 
-1. 采用协程优化预处理与搜索速度
-2. 完成正则匹配功能
+## 3.1 双击搜索结果打开文件
+
+双击搜索结果会打开调用链的最后一个节点所对应的文件
+
+对于非原文本搜索可选择打开解析前或者解析后的文件
+
+![image-20240724170248787](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724170248787.png)
+
+## 3.2 鼠标右键点击结果复制文本
 
 
 
-> Dusong   7/17/2024
+## 3.3 去重
+
+![image-20240724170418325](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724170418325.png)
+
+对于非去重的结果可能会出现以下情况，即LS调用的LF会在结果中再展示一行，去重之后图中第二个方框中的结果则不会显示
+
+![ae68fe70c6121e21cf348e0aed86b2f3](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/ae68fe70c6121e21cf348e0aed86b2f3.png)
+
+
+
+## 3.4 导出结果
+
+将所有调用链结果保存到文本中
+
+![image-20240724170658734](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724170658734.png)
+
+
+
+## 3.5 历史搜索记录
+
+![image-20240724170814596](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724170814596.png)
+
+
+
+## 3.6 正则匹配
+
+结果的调用链的最后一个节点会展示匹配到的字符串，每个字符串对应目标所在行的行号
+
+![image-20240724172340549](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724172340549.png)
+
+## 3.7 结果排序
+
+![image-20240724171204370](https://typora-dusong.oss-cn-chengdu.aliyuncs.com/image-20240724171204370.png)
+
+# 4 报错解释
+
+搜索结果报错`not found`说明该调用链的最后一个节点文件在业务逻辑和原子这两个目录下没有找到，（很大原因是勾选了原文本搜索，导致搜索到了很多没有去注释的代码）
