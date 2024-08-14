@@ -665,16 +665,29 @@ func (this *MyMainWindow) search(resultTable *ResultInfoModel, errsTable *ErrInf
 		walk.MsgBox(this, "提示", "搜索结果已导出到："+filepath.Join(ROOT_DIR, "result.txt"), walk.MsgBoxIconInformation)
 		go func() {
 			file, err := os.OpenFile(filepath.Join(ROOT_DIR, "result.txt"), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
+			lastFile, lastErr := os.OpenFile(filepath.Join(ROOT_DIR, "last_result.txt"), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
 			defer file.Close()
+			defer lastFile.Close()
 			if err != nil {
 				ERROR.Println("导出结果错误：", err)
+			}
+			if lastErr != nil {
+				ERROR.Println("导出结果错误：", lastErr)
 			}
 			for _, line := range result.CallChain {
 				_, err := file.WriteString(line + "\n")
 				if err != nil {
 					ERROR.Println("写入结果到文件错误：", err)
 				}
+				nodes := strings.Split(line, "->")
+				_, err = lastFile.WriteString(nodes[len(nodes)-1] + "\n")
+				if err != nil {
+					ERROR.Println("写入结果到文件错误：", err)
+
+				}
 			}
+			//提取调用连最后一个节点
+
 		}()
 	}
 }
